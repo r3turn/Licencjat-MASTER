@@ -17,7 +17,6 @@ data/
 *.xlsx
 *.parquet
 *.json
-*.txt
 
 # AI Models & Weights
 *.pth
@@ -29,7 +28,6 @@ checkpoints/
 
 # Charts & Images
 charts/
-wykresy/
 *.png
 *.jpg
 *.pdf

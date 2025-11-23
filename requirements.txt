@@ -1,0 +1,17 @@
+torch           # LSTM/GRU
+torchvision     # PyTorch addition
+torchaudio      # PyTorch addition
+
+numpy           # Matrix/tensor
+pandas          # Data Frame
+scikit-learn    # MinMax/RMSE
+
+yfinance        # Data fetch
+
+arch            # GARCH, EGARCH, GJR-GARCH
+
+matplotlib      # Basic plots
+seaborn         # Advanced Plots
+
+tqdm            # Model training progress
+streamlit       # Web app (fitire addition)
