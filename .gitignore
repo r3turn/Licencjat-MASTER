@@ -1,0 +1,42 @@
+# OS Trash Mac/Windows)
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual Enviroments
+venv/
+.venv/
+env/
+
+# DATA
+data/
+*.csv
+*.xlsx
+*.parquet
+*.json
+*.txt
+
+# AI Models & Weights
+*.pth
+*.pt
+*.pkl
+*.h5
+models/
+checkpoints/
+
+# Charts & Images
+charts/
+wykresy/
+*.png
+*.jpg
+*.pdf
+
+# Logs & Secrets
+*.log
+.env
+
+# IDE settings
+.vscode/
