@@ -9,6 +9,9 @@ returns = pd.read_parquet("data/returns.parquet")
 garch_volatility = pd.DataFrame(index=returns.index, columns=returns.columns)
 garch_var95 = pd.DataFrame(index=returns.index, columns=returns.columns)
 
+# Create subfolder for charts
+os.makedirs("charts/simple_garch", exist_ok=True)
+
 # ARCH(1,1) MODELS
 for ticker in returns.columns:
     y = returns[ticker]
@@ -31,7 +34,7 @@ for ticker in returns.columns:
 garch_volatility.to_parquet("data/garch_volatility.parquet")
 garch_var95.to_parquet("data/garch_var95.parquet")
 
-# NVDA Plot
+# NVDA Plot (Full History)
 if 'NVDA' in returns.columns:
     plt.figure(figsize=(12, 6))
     
@@ -49,7 +52,33 @@ if 'NVDA' in returns.columns:
     plt.ylabel("Log Return / Volatility")
     plt.tight_layout()
     
-    plt.savefig("charts/garch_NVDA.png", dpi=300)
+    # Save to subfolder
+    plt.savefig("charts/simple_garch/garch_NVDA.png", dpi=300)
+    plt.close()
+
+    # --- NVDA Plot (2020 Zoom) ---
+    plt.figure(figsize=(12, 6))
+    
+    # Slice data for 2020
+    zoom_start = "2020-01-01"
+    zoom_end = "2020-12-31"
+    
+    zoom_ret = returns.loc[zoom_start:zoom_end, ticker]
+    zoom_vol = sigma.loc[zoom_start:zoom_end]
+    
+    # Plot Zoom
+    plt.plot(zoom_ret.index, zoom_ret, color='gray', alpha=0.4, label='Real Returns', linewidth=1.0)
+    plt.plot(zoom_vol.index, 2 * zoom_vol, color='red', linewidth=2.0, label='GARCH Volatility (+/- 2σ)')
+    plt.plot(zoom_vol.index, -2 * zoom_vol, color='red', linewidth=2.0)
+    
+    plt.title(f"GARCH(1,1) Reaction to COVID-19: {ticker} (2020 Zoom)", fontsize=14)
+    plt.legend(loc='upper left')
+    plt.grid(True, alpha=0.3)
+    plt.ylabel("Log Return / Volatility")
+    plt.tight_layout()
+    
+    # Save to subfolder
+    plt.savefig("charts/simple_garch/garch_NVDA_2020_zoom.png", dpi=300)
     plt.close()
 
 # COMBO chart
@@ -73,6 +102,7 @@ for i, ticker in enumerate(returns.columns):
         ax.legend(loc='upper right')
 
 plt.tight_layout()
-plt.savefig("charts/garch_combined_summary.png", dpi=300)
+# Save to subfolder
+plt.savefig("charts/simple_garch/garch_combined_summary.png", dpi=300)
 plt.close()
 print(f"CAHRTS GENERATED")

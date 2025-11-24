@@ -29,11 +29,12 @@ os.makedirs("data", exist_ok=True)
 df_prices.to_parquet("data/prices.parquet")
 df_volume.to_parquet("data/volume.parquet")
 df_returns.to_parquet("data/returns.parquet")
-print("Dataframes successfully saved to 'data/' folder.")
+print("Dataframes saved")
 
 # --- VISUALIZATION SECTION ---
 
-os.makedirs("charts", exist_ok=True)
+# Tu zmienilem sciezke na charts/get_data
+os.makedirs("charts/get_data", exist_ok=True)
 
 # Visualizing Volatility Clustering
 # periods of calm vs. periods of high volatility (clusters)
@@ -46,10 +47,11 @@ for i, ticker in enumerate(TICKER_LIST, 1):
     plt.legend(loc='upper right')
 
 plt.tight_layout()
-plt.savefig("charts/returns_plot.png", dpi=300)
+# Zapis do podfolderu
+plt.savefig("charts/get_data/returns_plot.png", dpi=300)
 plt.close()
 
-# Distributions vs Normal Distribution
+# istributions vs Normal Distribution
 # This chart proves that returns are NOT normally distributed
 plt.figure(figsize=(15, 8))
 for i, ticker in enumerate(TICKER_LIST, 1):
@@ -69,7 +71,8 @@ for i, ticker in enumerate(TICKER_LIST, 1):
     if i == 1: plt.legend()
 
 plt.tight_layout()
-plt.savefig("charts/distribution_plot.png", dpi=300)
+# Zapis do podfolderu
+plt.savefig("charts/get_data/distribution_plot.png", dpi=300)
 plt.close()
 
-print("Charts successfully saved to 'charts/' folder")
+print("✅ Charts successfully saved to 'charts/get_data' folder.")
