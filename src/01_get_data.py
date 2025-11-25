@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-# --- DATA DOWNLOAD SECTION ---
-
 # ticker setup
 TICKER_LIST = ['AAPL', 'NVDA', 'JPM', 'XOM', 'KGH.WA']
 START_DATE = "2005-01-01"
