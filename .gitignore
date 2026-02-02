@@ -38,3 +38,6 @@ charts/
 
 # IDE settings
 .vscode/
+
+#claude
+.claude
