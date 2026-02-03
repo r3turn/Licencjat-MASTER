@@ -5,9 +5,12 @@ import os
 scripts = [
     "01_fetch_data.py",
     "02_preprocessing.py",
-    # "03_garch.py",
-    # "04_egarch.py",
-    # "05_gjr_garch.py",
+    "03_garch.py",
+    "04_egarch.py",
+    "05_gjr_garch.py",
+    # "06_lstm.py",
+    # "07_gru.py",
+    # "08_comparison.py",
 ]
 
 for script in scripts:
