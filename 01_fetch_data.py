@@ -3,10 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import sys
-from params import TICKERS, START_DATE, END_DATE, set_seed
-
-# Reproducibility
-set_seed()
+from params import TICKERS, START_DATE, END_DATE
 
 # Utwórz foldery jeśli nie istnieją
 os.makedirs("data/raw", exist_ok=True)

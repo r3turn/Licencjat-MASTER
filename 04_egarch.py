@@ -9,12 +9,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-from params import TICKERS, INITIAL_TRAIN_SIZE, REFIT_EVERY, set_seed
+from params import TICKERS, INITIAL_TRAIN_SIZE, REFIT_EVERY
 from utils.walk_forward import walk_forward_garch
 from utils.metrics import calculate_all_metrics
-
-# Reproducibility
-set_seed()
 
 # Foldery
 os.makedirs("results/04_egarch", exist_ok=True)
