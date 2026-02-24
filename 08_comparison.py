@@ -23,6 +23,7 @@ MODELS = {
     '04_egarch': 'EGARCH(1,1)',
     '05_gjr_garch': 'GJR-GARCH(1,1,1)',
     '06_lstm': 'LSTM',
+    '07_gru': 'GRU',
 }
 
 # Metryki do porównania
@@ -218,6 +219,7 @@ colors = {
     'EGARCH(1,1)': 'darkorange',
     'GJR-GARCH(1,1,1)': 'forestgreen',
     'LSTM': 'purple',
+    'GRU': 'teal',
 }
 
 # 1. Wykres słupkowy dla każdej metryki (grouped bar)
@@ -228,7 +230,7 @@ for metric in METRICS:
     fig, ax = plt.subplots(figsize=(12, 6))
 
     x = np.arange(len(TICKERS))
-    width = 0.2
+    width = 0.15  # zmniejszone dla 5 modeli
     multiplier = 0
 
     for model in pivot.columns:

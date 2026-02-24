@@ -8,9 +8,9 @@ scripts = [
     "03_garch.py",
     "04_egarch.py",
     "05_gjr_garch.py",
-    # "06_lstm.py",
-    # "07_gru.py",
-    # "08_comparison.py",
+    "06_lstm.py",
+    "07_gru.py",
+    "08_comparison.py",
 ]
 
 for script in scripts:
