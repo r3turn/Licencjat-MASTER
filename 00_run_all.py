@@ -11,6 +11,9 @@ scripts = [
     "06_lstm.py",
     "07_gru.py",
     "08_comparison.py",
+    "09_diebold_mariano.py",
+    "10_overfitting_analysis.py",
+    "11_hipotezy_podsumowanie.py",
 ]
 
 for script in scripts:

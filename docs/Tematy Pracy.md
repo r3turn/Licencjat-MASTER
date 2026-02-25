@@ -2,11 +2,11 @@
 
 ### **Temat (PL)**
 
-**Prognozowanie zmienności i ryzyka Value-at-Risk z wykorzystaniem modeli rodziny GARCH oraz głębokich sieci rekurencyjnych: analiza porównawcza na rynkach akcyjnych**
+**Prognozowanie zmienności z wykorzystaniem modeli rodziny GARCH oraz głębokich sieci rekurencyjnych: analiza porównawcza na rynkach akcyjnych**
 
 ### **Temat (ENG)**
 
-**Volatility and Value-at-Risk Forecasting Using GARCH Family Models and Deep Recurrent Neural Networks: A Comparative Study on Equity Markets**
+**Volatility Forecasting Using GARCH Family Models and Deep Recurrent Neural Networks: A Comparative Study on Equity Markets**
 
 ---
 
@@ -17,8 +17,7 @@ Celem pracy jest porównanie skuteczności prognostycznej klasycznych modeli eko
 ### **2\. Hipotezy badawcze**
 
 1. **H1:** Modele oparte na głębokim uczeniu (LSTM/GRU) osiągają mniejsze błędy prognoz (RMSE, QLIKE) niż klasyczne modele GARCH w okresach podwyższonej zmienności rynkowej.  
-2. **H2:** Uwzględnienie efektu asymetrii (modele EGARCH/GJR-GARCH) pozwala na skuteczniejszą estymację ryzyka (VaR) niż podstawowy model GARCH(1,1) oraz modele sieciowe.  
-3. **H3:** Złożone modele sieci neuronowych są bardziej podatne na przeuczenie (overfitting) przy ograniczonej próbie danych dziennych w porównaniu do modeli ekonometrycznych.
+2. **H3:** Złożone modele sieci neuronowych są bardziej podatne na przeuczenie (overfitting) przy ograniczonej próbie danych dziennych w porównaniu do modeli ekonometrycznych.
 
 ---
 
@@ -41,7 +40,7 @@ Celem pracy jest porównanie skuteczności prognostycznej klasycznych modeli eko
 
 * Obliczenie logarytmicznych stóp zwrotu: rt​=ln(Pt​/Pt−1​).  
 * Standaryzacja/Normalizacja danych (niezbędna dla sieci neuronowych).  
-* Podział na zbiory: Treningowy (70%), Walidacyjny (15%), Testowy (15%) lub zastosowanie Walidacji Kroczącej (Walk-Forward).
+* zastosowanie Walidacji Kroczącej (Walk-Forward)
 
 ---
 
@@ -71,8 +70,8 @@ Celem pracy jest porównanie skuteczności prognostycznej klasycznych modeli eko
 
 * **RMSE (Root Mean Squared Error):** Standardowa miara błędu.  
 * **MAE (Mean Absolute Error):** Miara odporna na wartości odstające.  
-* **QLIKE Loss:** Asymetryczna funkcja straty, standard w literaturze dotyczącej zmienności (karze niedoszacowanie zmienności bardziej niż przeszacowanie). DOCZYTAĆ  
-* MAPE \-
+* **QLIKE Loss:** Asymetryczna funkcja straty, standard w literaturze dotyczącej zmienności (karze niedoszacowanie zmienności bardziej niż przeszacowanie).   
+* **MAPE** 
 
 **Porównanie Modeli:**
 
