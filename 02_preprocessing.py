@@ -93,23 +93,7 @@ plt.tight_layout()
 plt.savefig("charts/02_preprocessing/acf_comparison.png", dpi=150)
 plt.close()
 
-# 3. QQ-plot
-fig, axes = plt.subplots(2, 3, figsize=(14, 8))
-axes = axes.flatten()
-
-for i, ticker in enumerate(TICKERS):
-    stats.probplot(returns[ticker], dist="norm", plot=axes[i])
-    axes[i].set_title(f"Wykres Q-Q: {ticker}")
-    axes[i].set_xlabel("Kwantyle teoretyczne")
-    axes[i].set_ylabel("Kwantyle empiryczne")
-
-axes[-1].axis('off')
-plt.suptitle("Wykres kwantyl-kwantyl vs rozkład normalny", fontsize=14)
-plt.tight_layout()
-plt.savefig("charts/02_preprocessing/qq_plots.png", dpi=150)
-plt.close()
-
-# 4. Time series zwrotów
+# 3. Time series zwrotów
 fig, axes = plt.subplots(len(TICKERS), 1, figsize=(14, 2.5 * len(TICKERS)), sharex=True)
 
 for i, ticker in enumerate(TICKERS):

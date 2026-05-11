@@ -81,41 +81,23 @@ for ticker in TICKERS:
 
     # --- WYKRESY ---
 
-    # 1. Forecast vs Realized
-    fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    # Stopy zwrotu + pasma ±2σ
+    ret_aligned = returns[ticker].reindex(pd.to_datetime(dates)).values
+    sigma = np.sqrt(forecasts)
 
-    axes[0].plot(dates, realized, label='Realized (r²)', alpha=0.7, linewidth=0.5)
-    axes[0].plot(dates, forecasts, label=f'{MODEL_NAME} forecast', alpha=0.7, linewidth=0.5)
-    axes[0].set_ylabel('Wariancja (σ²)')
-    axes[0].set_title(f'{ticker} - {MODEL_NAME}: Prognoza vs Realizacja')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].plot(dates, forecasts - realized, color='red', alpha=0.5, linewidth=0.5)
-    axes[1].axhline(y=0, color='black', linestyle='--', linewidth=0.5)
-    axes[1].set_ylabel('Błąd (forecast - realized)')
-    axes[1].set_xlabel('Data')
-    axes[1].grid(True, alpha=0.3)
-
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.plot(dates, ret_aligned, color='steelblue', linewidth=0.5, alpha=0.8, label='Stopy zwrotu')
+    ax.plot(dates,  2 * sigma, color='red', linewidth=0.9, label=f'±2σ ({MODEL_NAME})')
+    ax.plot(dates, -2 * sigma, color='red', linewidth=0.9)
+    ax.fill_between(dates, -2 * sigma, 2 * sigma, alpha=0.15, color='red')
+    ax.axhline(0, color='black', linewidth=0.5)
+    ax.set_ylabel('Stopa zwrotu / ±2σ')
+    ax.set_xlabel('Data')
+    ax.set_title(f'{ticker} — {MODEL_NAME}: stopy zwrotu i pasma zmienności ±2σ')
+    ax.legend(loc='upper right', fontsize=9)
+    ax.grid(True, alpha=0.25)
     plt.tight_layout()
     plt.savefig(f"charts/05_gjr_garch/forecast_vs_realized_{ticker}.png", dpi=150)
-    plt.close()
-
-    # 2. Scatter plot
-    fig, ax = plt.subplots(figsize=(8, 8))
-
-    ax.scatter(realized, forecasts, alpha=0.3, s=5)
-    max_val = max(realized.max(), forecasts.max())
-    ax.plot([0, max_val], [0, max_val], 'r--', label='Idealne dopasowanie')
-
-    ax.set_xlabel('Realized (r²)')
-    ax.set_ylabel('Forecast (σ²)')
-    ax.set_title(f'{ticker} - {MODEL_NAME}: Scatter Plot')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(f"charts/05_gjr_garch/scatter_{ticker}.png", dpi=150)
     plt.close()
 
 # Zapisz podsumowanie
@@ -125,24 +107,6 @@ print(f"\n{'='*50}")
 print(f"PODSUMOWANIE {MODEL_NAME}")
 print('='*50)
 print(results_df.to_string(index=False))
-
-# Wykres porównawczy
-fig, axes = plt.subplots(1, 3, figsize=(14, 5))
-
-metrics_to_plot = ['rmse', 'mae', 'qlike']
-titles = ['RMSE', 'MAE', 'QLIKE']
-
-for ax, metric, title in zip(axes, metrics_to_plot, titles):
-    ax.bar(results_df['ticker'], results_df[metric], color='forestgreen', edgecolor='black')
-    ax.set_ylabel(title)
-    ax.set_title(f'{MODEL_NAME} - {title}')
-    ax.tick_params(axis='x', rotation=45)
-    ax.grid(True, alpha=0.3, axis='y')
-
-plt.suptitle(f'{MODEL_NAME} - Porównanie metryk między tickerami', fontsize=14)
-plt.tight_layout()
-plt.savefig("charts/05_gjr_garch/metrics_comparison.png", dpi=150)
-plt.close()
 
 print(f"\nWyniki zapisane w results/05_gjr_garch/")
 print(f"Wykresy zapisane w charts/05_gjr_garch/")

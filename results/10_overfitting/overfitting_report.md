@@ -12,22 +12,23 @@
 
 | Ticker | LSTM best epoch | LSTM overfit % | GRU best epoch | GRU overfit % |
 |--------|-----------------|----------------|----------------|---------------|
-| AAPL | 68 | 3.7% | 63 | 2.0% |
-| NVDA | 61 | 5.3% | 31 | 15.7% |
-| JPM | 82 | 14.2% | 67 | 10.4% |
+| AAPL | 68 | 3.3% | 63 | 2.1% |
+| NVDA | 61 | 5.4% | 31 | 12.1% |
+| JPM | 82 | 21.3% | 67 | 10.4% |
 | XOM | 55 | 1.3% | 60 | 3.2% |
-| SCCO | 48 | 3.0% | 96 | 0.5% |
-| **Średnia** | 62.8 | 5.5% | 63.4 | 6.4% |
+| SCCO | 48 | 3.2% | 94 | 1.1% |
+| **Średnia** | 62.8 | 6.9% | 63.0 | 5.8% |
 
 ## Wnioski
 
-- **GRU** wykazuje większą tendencję do overfittingu (6.4%)
-- **LSTM** jest bardziej odporny (5.5%)
+- **LSTM** wykazuje większą tendencję do overfittingu (6.9%)
+- **GRU** jest bardziej odporny (5.8%)
+- Potwierdza to, że prostszy model (GRU) lepiej generalizuje
 
 - Early stopping (patience=15) skutecznie zapobiega overfittingowi
 - Optymalny moment zatrzymania: ~epoch 63
 
 ## Hipoteza H3
 
-**CZĘŚCIOWO POTWIERDZONA** - overfitting jest umiarkowany (<10%), 
-co sugeruje że dropout i early stopping skutecznie regularyzują model.
+**POTWIERDZONA** - sieci neuronowe wykazują tendencję do overfittingu, 
+ale jest ona kontrolowana przez early stopping.

@@ -10,79 +10,79 @@ Test statystyczny porównujący dokładność prognoz modeli.
 
 | Model | Istotne zwycięstwa |
 |-------|-------------------|
-| GRU | 10 |
-| EGARCH(1,1) | 7 |
-| GARCH(1,1) | 4 |
-| LSTM | 4 |
-| GJR-GARCH(1,1,1) | 2 |
+| GARCH(1,1) | 3 |
+| GJR-GARCH(1,1,1) | 3 |
+| EGARCH(1,1) | 2 |
+| GRU | 2 |
+| LSTM | 0 |
 
 ## Sieci neuronowe vs GARCH
 
-- Sieci neuronowe wygrywają: **12**
-- GARCH wygrywają: **3**
-- Brak istotnej różnicy: **15**
+- Sieci neuronowe wygrywają: **0**
+- GARCH wygrywają: **8**
+- Brak istotnej różnicy: **22**
 
 ## LSTM vs GRU (bezpośrednie porównanie)
 
 | Ticker | p-value | Wynik |
 |--------|---------|-------|
-| AAPL | 0.3515 | brak różnicy |
-| NVDA | 0.0000 | **GRU** |
-| JPM | 0.0000 | **GRU** |
-| XOM | 0.2714 | brak różnicy |
-| SCCO | 0.4464 | brak różnicy |
+| AAPL | 0.4218 | brak różnicy |
+| NVDA | 0.0010 | **GRU** |
+| JPM | 0.0002 | **GRU** |
+| XOM | 0.2404 | brak różnicy |
+| SCCO | 0.7984 | brak różnicy |
 
 ## Szczegółowe wyniki
 
 | Ticker | Model 1 | Model 2 | DM stat | p-value | Istotne? | Lepszy |
 |--------|---------|---------|---------|---------|----------|--------|
-| AAPL | GARCH(1,1) | EGARCH(1,1) | +9.592 | 0.0000 | TAK | EGARCH(1,1) |
-| AAPL | GARCH(1,1) | GJR-GARCH(1,1,1) | -1.006 | 0.3145 | NIE | brak |
-| AAPL | GARCH(1,1) | LSTM | +3.324 | 0.0009 | TAK | LSTM |
-| AAPL | GARCH(1,1) | GRU | +2.958 | 0.0031 | TAK | GRU |
-| AAPL | EGARCH(1,1) | GJR-GARCH(1,1,1) | -3.828 | 0.0001 | TAK | EGARCH(1,1) |
-| AAPL | EGARCH(1,1) | LSTM | +2.813 | 0.0049 | TAK | LSTM |
-| AAPL | EGARCH(1,1) | GRU | +2.598 | 0.0094 | TAK | GRU |
-| AAPL | GJR-GARCH(1,1,1) | LSTM | +3.517 | 0.0004 | TAK | LSTM |
-| AAPL | GJR-GARCH(1,1,1) | GRU | +3.117 | 0.0018 | TAK | GRU |
-| AAPL | LSTM | GRU | +0.932 | 0.3515 | NIE | brak |
-| NVDA | GARCH(1,1) | EGARCH(1,1) | -1.506 | 0.1321 | NIE | brak |
-| NVDA | GARCH(1,1) | GJR-GARCH(1,1,1) | -3.726 | 0.0002 | TAK | GARCH(1,1) |
-| NVDA | GARCH(1,1) | LSTM | +1.753 | 0.0796 | NIE | brak |
-| NVDA | GARCH(1,1) | GRU | +3.348 | 0.0008 | TAK | GRU |
-| NVDA | EGARCH(1,1) | GJR-GARCH(1,1,1) | -1.613 | 0.1067 | NIE | brak |
-| NVDA | EGARCH(1,1) | LSTM | +1.951 | 0.0510 | NIE | brak |
-| NVDA | EGARCH(1,1) | GRU | +3.500 | 0.0005 | TAK | GRU |
-| NVDA | GJR-GARCH(1,1,1) | LSTM | +2.443 | 0.0146 | TAK | LSTM |
-| NVDA | GJR-GARCH(1,1,1) | GRU | +3.882 | 0.0001 | TAK | GRU |
-| NVDA | LSTM | GRU | +4.923 | 0.0000 | TAK | GRU |
-| JPM | GARCH(1,1) | EGARCH(1,1) | -3.126 | 0.0018 | TAK | GARCH(1,1) |
-| JPM | GARCH(1,1) | GJR-GARCH(1,1,1) | +0.045 | 0.9644 | NIE | brak |
-| JPM | GARCH(1,1) | LSTM | -3.397 | 0.0007 | TAK | GARCH(1,1) |
-| JPM | GARCH(1,1) | GRU | +1.049 | 0.2941 | NIE | brak |
-| JPM | EGARCH(1,1) | GJR-GARCH(1,1,1) | +1.456 | 0.1455 | NIE | brak |
-| JPM | EGARCH(1,1) | LSTM | -3.128 | 0.0018 | TAK | EGARCH(1,1) |
-| JPM | EGARCH(1,1) | GRU | +1.756 | 0.0790 | NIE | brak |
-| JPM | GJR-GARCH(1,1,1) | LSTM | -3.454 | 0.0006 | TAK | GJR-GARCH(1,1,1) |
-| JPM | GJR-GARCH(1,1,1) | GRU | +1.049 | 0.2944 | NIE | brak |
-| JPM | LSTM | GRU | +4.585 | 0.0000 | TAK | GRU |
-| XOM | GARCH(1,1) | EGARCH(1,1) | +3.317 | 0.0009 | TAK | EGARCH(1,1) |
-| XOM | GARCH(1,1) | GJR-GARCH(1,1,1) | +2.027 | 0.0427 | TAK | GJR-GARCH(1,1,1) |
-| XOM | GARCH(1,1) | LSTM | +1.805 | 0.0710 | NIE | brak |
-| XOM | GARCH(1,1) | GRU | +2.271 | 0.0232 | TAK | GRU |
-| XOM | EGARCH(1,1) | GJR-GARCH(1,1,1) | -3.916 | 0.0001 | TAK | EGARCH(1,1) |
-| XOM | EGARCH(1,1) | LSTM | +1.617 | 0.1059 | NIE | brak |
-| XOM | EGARCH(1,1) | GRU | +1.947 | 0.0515 | NIE | brak |
-| XOM | GJR-GARCH(1,1,1) | LSTM | +1.706 | 0.0881 | NIE | brak |
-| XOM | GJR-GARCH(1,1,1) | GRU | +2.120 | 0.0340 | TAK | GRU |
-| XOM | LSTM | GRU | -1.100 | 0.2714 | NIE | brak |
-| SCCO | GARCH(1,1) | EGARCH(1,1) | +4.438 | 0.0000 | TAK | EGARCH(1,1) |
-| SCCO | GARCH(1,1) | GJR-GARCH(1,1,1) | -3.169 | 0.0015 | TAK | GARCH(1,1) |
-| SCCO | GARCH(1,1) | LSTM | +1.592 | 0.1114 | NIE | brak |
-| SCCO | GARCH(1,1) | GRU | +1.070 | 0.2847 | NIE | brak |
-| SCCO | EGARCH(1,1) | GJR-GARCH(1,1,1) | -5.141 | 0.0000 | TAK | EGARCH(1,1) |
-| SCCO | EGARCH(1,1) | LSTM | +1.259 | 0.2080 | NIE | brak |
-| SCCO | EGARCH(1,1) | GRU | +0.772 | 0.4401 | NIE | brak |
-| SCCO | GJR-GARCH(1,1,1) | LSTM | +1.694 | 0.0902 | NIE | brak |
-| SCCO | GJR-GARCH(1,1,1) | GRU | +1.155 | 0.2481 | NIE | brak |
-| SCCO | LSTM | GRU | -0.761 | 0.4464 | NIE | brak |
+| AAPL | GARCH(1,1) | EGARCH(1,1) | -0.342 | 0.7326 | NIE | brak |
+| AAPL | GARCH(1,1) | GJR-GARCH(1,1,1) | -0.037 | 0.9708 | NIE | brak |
+| AAPL | GARCH(1,1) | LSTM | -0.498 | 0.6187 | NIE | brak |
+| AAPL | GARCH(1,1) | GRU | +0.679 | 0.4970 | NIE | brak |
+| AAPL | EGARCH(1,1) | GJR-GARCH(1,1,1) | +0.062 | 0.9507 | NIE | brak |
+| AAPL | EGARCH(1,1) | LSTM | -0.493 | 0.6222 | NIE | brak |
+| AAPL | EGARCH(1,1) | GRU | +0.854 | 0.3932 | NIE | brak |
+| AAPL | GJR-GARCH(1,1,1) | LSTM | -0.388 | 0.6983 | NIE | brak |
+| AAPL | GJR-GARCH(1,1,1) | GRU | +0.446 | 0.6556 | NIE | brak |
+| AAPL | LSTM | GRU | +0.803 | 0.4218 | NIE | brak |
+| NVDA | GARCH(1,1) | EGARCH(1,1) | -0.502 | 0.6157 | NIE | brak |
+| NVDA | GARCH(1,1) | GJR-GARCH(1,1,1) | +1.079 | 0.2804 | NIE | brak |
+| NVDA | GARCH(1,1) | LSTM | -3.074 | 0.0021 | TAK | GARCH(1,1) |
+| NVDA | GARCH(1,1) | GRU | -0.041 | 0.9669 | NIE | brak |
+| NVDA | EGARCH(1,1) | GJR-GARCH(1,1,1) | +1.569 | 0.1166 | NIE | brak |
+| NVDA | EGARCH(1,1) | LSTM | -2.238 | 0.0252 | TAK | EGARCH(1,1) |
+| NVDA | EGARCH(1,1) | GRU | +0.192 | 0.8475 | NIE | brak |
+| NVDA | GJR-GARCH(1,1,1) | LSTM | -3.193 | 0.0014 | TAK | GJR-GARCH(1,1,1) |
+| NVDA | GJR-GARCH(1,1,1) | GRU | -0.493 | 0.6222 | NIE | brak |
+| NVDA | LSTM | GRU | +3.279 | 0.0010 | TAK | GRU |
+| JPM | GARCH(1,1) | EGARCH(1,1) | -1.260 | 0.2077 | NIE | brak |
+| JPM | GARCH(1,1) | GJR-GARCH(1,1,1) | +1.662 | 0.0965 | NIE | brak |
+| JPM | GARCH(1,1) | LSTM | -3.647 | 0.0003 | TAK | GARCH(1,1) |
+| JPM | GARCH(1,1) | GRU | +0.079 | 0.9369 | NIE | brak |
+| JPM | EGARCH(1,1) | GJR-GARCH(1,1,1) | +1.814 | 0.0696 | NIE | brak |
+| JPM | EGARCH(1,1) | LSTM | -3.059 | 0.0022 | TAK | EGARCH(1,1) |
+| JPM | EGARCH(1,1) | GRU | +0.462 | 0.6441 | NIE | brak |
+| JPM | GJR-GARCH(1,1,1) | LSTM | -5.715 | 0.0000 | TAK | GJR-GARCH(1,1,1) |
+| JPM | GJR-GARCH(1,1,1) | GRU | -0.990 | 0.3224 | NIE | brak |
+| JPM | LSTM | GRU | +3.740 | 0.0002 | TAK | GRU |
+| XOM | GARCH(1,1) | EGARCH(1,1) | -0.092 | 0.9268 | NIE | brak |
+| XOM | GARCH(1,1) | GJR-GARCH(1,1,1) | +1.202 | 0.2293 | NIE | brak |
+| XOM | GARCH(1,1) | LSTM | +0.591 | 0.5543 | NIE | brak |
+| XOM | GARCH(1,1) | GRU | -1.150 | 0.2503 | NIE | brak |
+| XOM | EGARCH(1,1) | GJR-GARCH(1,1,1) | +0.904 | 0.3659 | NIE | brak |
+| XOM | EGARCH(1,1) | LSTM | +0.573 | 0.5669 | NIE | brak |
+| XOM | EGARCH(1,1) | GRU | -1.297 | 0.1948 | NIE | brak |
+| XOM | GJR-GARCH(1,1,1) | LSTM | +0.330 | 0.7413 | NIE | brak |
+| XOM | GJR-GARCH(1,1,1) | GRU | -1.537 | 0.1242 | NIE | brak |
+| XOM | LSTM | GRU | -1.174 | 0.2404 | NIE | brak |
+| SCCO | GARCH(1,1) | EGARCH(1,1) | -0.465 | 0.6419 | NIE | brak |
+| SCCO | GARCH(1,1) | GJR-GARCH(1,1,1) | +0.884 | 0.3766 | NIE | brak |
+| SCCO | GARCH(1,1) | LSTM | -2.361 | 0.0182 | TAK | GARCH(1,1) |
+| SCCO | GARCH(1,1) | GRU | -1.698 | 0.0895 | NIE | brak |
+| SCCO | EGARCH(1,1) | GJR-GARCH(1,1,1) | +0.610 | 0.5419 | NIE | brak |
+| SCCO | EGARCH(1,1) | LSTM | -1.912 | 0.0559 | NIE | brak |
+| SCCO | EGARCH(1,1) | GRU | -1.456 | 0.1454 | NIE | brak |
+| SCCO | GJR-GARCH(1,1,1) | LSTM | -2.676 | 0.0075 | TAK | GJR-GARCH(1,1,1) |
+| SCCO | GJR-GARCH(1,1,1) | GRU | -1.865 | 0.0622 | NIE | brak |
+| SCCO | LSTM | GRU | -0.255 | 0.7984 | NIE | brak |

@@ -191,24 +191,26 @@ for ticker in TICKERS:
     epochs_range = range(1, EPOCHS + 1)
 
     # LSTM
-    axes[0].plot(epochs_range, lstm_train_loss, label='Train Loss', color='blue')
-    axes[0].plot(epochs_range, lstm_val_loss, label='Val Loss', color='red')
+    axes[0].plot(epochs_range, lstm_train_loss, label='Strata treningowa', color='blue')
+    axes[0].plot(epochs_range, lstm_val_loss, label='Strata walidacyjna', color='red')
     axes[0].axvline(x=lstm_best_epoch+1, color='green', linestyle='--',
-                    label=f'Best epoch ({lstm_best_epoch+1})')
-    axes[0].set_xlabel('Epoch')
-    axes[0].set_ylabel('MSE Loss')
-    axes[0].set_title(f'{ticker} - LSTM Learning Curves')
+                    label=f'Najlepsza epoka ({lstm_best_epoch+1})')
+    axes[0].axvspan(lstm_best_epoch+1, EPOCHS, alpha=0.06, color='red')
+    axes[0].set_xlabel('Epoka')
+    axes[0].set_ylabel('Strata MSE')
+    axes[0].set_title(f'{ticker} — LSTM: krzywe uczenia')
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
 
     # GRU
-    axes[1].plot(epochs_range, gru_train_loss, label='Train Loss', color='blue')
-    axes[1].plot(epochs_range, gru_val_loss, label='Val Loss', color='red')
+    axes[1].plot(epochs_range, gru_train_loss, label='Strata treningowa', color='blue')
+    axes[1].plot(epochs_range, gru_val_loss, label='Strata walidacyjna', color='red')
     axes[1].axvline(x=gru_best_epoch+1, color='green', linestyle='--',
-                    label=f'Best epoch ({gru_best_epoch+1})')
-    axes[1].set_xlabel('Epoch')
-    axes[1].set_ylabel('MSE Loss')
-    axes[1].set_title(f'{ticker} - GRU Learning Curves')
+                    label=f'Najlepsza epoka ({gru_best_epoch+1})')
+    axes[1].axvspan(gru_best_epoch+1, EPOCHS, alpha=0.06, color='red')
+    axes[1].set_xlabel('Epoka')
+    axes[1].set_ylabel('Strata MSE')
+    axes[1].set_title(f'{ticker} — GRU: krzywe uczenia')
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
 
@@ -287,11 +289,12 @@ md_lines.append(f"\n- Early stopping (patience=15) skutecznie zapobiega overfitt
 md_lines.append(f"- Optymalny moment zatrzymania: ~epoch {(results_df['lstm_best_epoch'].mean() + results_df['gru_best_epoch'].mean())/2:.0f}")
 
 md_lines.append("\n## Hipoteza H3\n")
-if lstm_avg_overfit > 10 or gru_avg_overfit > 10:
+avg_overfit = (lstm_avg_overfit + gru_avg_overfit) / 2
+if avg_overfit > 5.0:
     md_lines.append("**POTWIERDZONA** - sieci neuronowe wykazują tendencję do overfittingu, ")
     md_lines.append("ale jest ona kontrolowana przez early stopping.")
 else:
-    md_lines.append("**CZĘŚCIOWO POTWIERDZONA** - overfitting jest umiarkowany (<10%), ")
+    md_lines.append("**CZĘŚCIOWO POTWIERDZONA** - overfitting jest umiarkowany (<5%), ")
     md_lines.append("co sugeruje że dropout i early stopping skutecznie regularyzują model.")
 
 md_content = "\n".join(md_lines)

@@ -222,36 +222,69 @@ colors = {
     'GRU': 'teal',
 }
 
-# 1. Wykres słupkowy dla każdej metryki (grouped bar)
-for metric in METRICS:
-    label = METRICS_LABELS[metric]
-    pivot = create_comparison_table(metric)
+# 1. Kombinowany wykres NN: LSTM + GRU w stylu ±2σ (NVDA)
+import matplotlib.dates as mdates
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+CHART_TICKER = "NVDA"
+covid = pd.Timestamp('2020-03-16')
+returns_all = pd.read_parquet("data/processed/returns.parquet")
 
-    x = np.arange(len(TICKERS))
-    width = 0.15  # zmniejszone dla 5 modeli
-    multiplier = 0
+lstm_df = pd.read_parquet(f"results/06_lstm/forecasts_{CHART_TICKER}.parquet")
+gru_df  = pd.read_parquet(f"results/07_gru/forecasts_{CHART_TICKER}.parquet")
 
-    for model in pivot.columns:
-        offset = width * multiplier
-        bars = ax.bar(x + offset, pivot[model], width, label=model,
-                      color=colors.get(model, 'gray'), edgecolor='black', linewidth=0.5)
-        multiplier += 1
+for df in (lstm_df, gru_df):
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
 
-    ax.set_xlabel('Ticker')
-    ax.set_ylabel(label)
-    ax.set_title(f'Porównanie modeli - {label}')
-    ax.set_xticks(x + width * (len(pivot.columns) - 1) / 2)
-    ax.set_xticklabels(TICKERS)
-    ax.legend(loc='upper right')
-    ax.grid(True, alpha=0.3, axis='y')
+idx_nn = lstm_df.index.intersection(gru_df.index)
+lstm_df = lstm_df.loc[idx_nn]; gru_df = gru_df.loc[idx_nn]
+dates_nn = lstm_df.index
 
-    plt.tight_layout()
-    plt.savefig(f"charts/08_comparison/{metric}_comparison.png", dpi=150)
-    plt.close()
+ret_nn      = returns_all[CHART_TICKER].reindex(dates_nn).values
+lstm_sigma  = np.sqrt(lstm_df['forecast'].values)
+gru_sigma   = np.sqrt(gru_df['forecast'].values)
 
-# 2. Wykres radarowy (średnie metryki znormalizowane)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8),
+                                gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
+fig.subplots_adjust(hspace=0.08)
+
+# Stopy zwrotu
+ax1.plot(dates_nn, ret_nn, color='steelblue', lw=0.5, alpha=0.8, label='Stopy zwrotu', zorder=2)
+
+# Pasma ±2σ — LSTM
+ax1.plot(dates_nn,  2 * lstm_sigma, color='crimson',    lw=1.0, label='±2σ LSTM', zorder=3)
+ax1.plot(dates_nn, -2 * lstm_sigma, color='crimson',    lw=1.0, zorder=3)
+
+# Pasma ±2σ — GRU
+ax1.plot(dates_nn,  2 * gru_sigma, color='darkorange', lw=1.0, linestyle='--', label='±2σ GRU', zorder=3)
+ax1.plot(dates_nn, -2 * gru_sigma, color='darkorange', lw=1.0, linestyle='--', zorder=3)
+
+ax1.axhline(0, color='black', lw=0.5)
+ax1.axvline(x=covid, color='gray', linestyle=':', lw=1.2, alpha=0.8)
+ax1.text(covid, float(np.nanmax(np.abs(ret_nn))) * 0.85,
+         'COVID\n2020', fontsize=8, color='gray', ha='center')
+
+ax1.set_ylabel('Stopa zwrotu / ±2σ', fontsize=11)
+ax1.set_title(f'{CHART_TICKER} — LSTM i GRU: stopy zwrotu i pasma zmienności ±2σ', fontsize=13)
+ax1.legend(loc='upper left', fontsize=10)
+ax1.grid(True, alpha=0.25)
+
+# Dolny panel: różnica σ_LSTM − σ_GRU
+diff_sigma = (lstm_sigma - gru_sigma) * 1e4
+diff_colors = ['crimson' if d >= 0 else 'darkorange' for d in diff_sigma]
+ax2.bar(dates_nn, diff_sigma, width=1, color=diff_colors, alpha=0.7)
+ax2.axhline(0, color='black', lw=0.8)
+ax2.set_ylabel('σ_LSTM − σ_GRU\n(×10⁴)', fontsize=9)
+ax2.set_xlabel('Data', fontsize=11)
+ax2.grid(True, alpha=0.25)
+ax2.xaxis.set_major_locator(mdates.YearLocator(2))
+ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
+plt.tight_layout()
+plt.savefig("charts/08_comparison/nn_comparison.png", dpi=150, bbox_inches='tight')
+plt.close()
+
+# 3. Wykres radarowy (średnie metryki znormalizowane)
 fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
 
 # Normalizacja metryk (0-1, gdzie 1 = najgorszy)
@@ -287,43 +320,64 @@ plt.tight_layout()
 plt.savefig("charts/08_comparison/radar_comparison.png", dpi=150)
 plt.close()
 
-# 3. Heatmapa rankingów
-fig, ax = plt.subplots(figsize=(10, 6))
+# 3. Ranking: pogrupowany wykres słupkowy (średnia ranga wg metryki)
+model_list = list(MODELS.values())
+n_models   = len(model_list)
 
-# Oblicz rankingi dla każdego tickera i metryki
-rankings = []
-for ticker in TICKERS:
-    for metric in METRICS:
-        pivot = create_comparison_table(metric)
-        row = pivot.loc[ticker]
-        lower_better = METRICS_LOWER_BETTER[metric]
+# Oblicz średnią rangę każdego modelu dla każdej metryki (uśrednione po tickerach)
+metric_avg_ranks = {}   # metric -> {model: avg_rank}
+overall_avg      = {model: 0.0 for model in model_list}
 
-        if lower_better:
-            rank = row.rank()
-        else:
-            rank = row.rank(ascending=False)
+for metric in METRICS:
+    pivot = create_comparison_table(metric)
+    metric_avg_ranks[metric] = {}
+    for model in model_list:
+        ranks = [pivot.loc[ticker].rank()[model] for ticker in TICKERS]
+        metric_avg_ranks[metric][model] = np.mean(ranks)
+        overall_avg[model] += np.mean(ranks)
 
-        for model, r in rank.items():
-            rankings.append({
-                'ticker': ticker,
-                'metric': METRICS_LABELS[metric],
-                'model': model,
-                'rank': r
-            })
+for model in model_list:
+    overall_avg[model] /= len(METRICS)
 
-rank_df = pd.DataFrame(rankings)
-rank_pivot = rank_df.groupby('model')['rank'].mean().sort_values()
+# Sortuj modele od najlepszego (najniższy overall avg rank)
+model_labels_r = sorted(model_list, key=lambda m: overall_avg[m])
 
-# Bar chart średnich rankingów
-ax.barh(rank_pivot.index, rank_pivot.values, color=[colors.get(m, 'gray') for m in rank_pivot.index],
-        edgecolor='black')
-ax.set_xlabel('Średni ranking (1 = najlepszy)')
-ax.set_title('Średni ranking modeli')
-ax.axvline(x=1, color='green', linestyle='--', alpha=0.5, label='Najlepszy możliwy')
-ax.grid(True, alpha=0.3, axis='x')
+metric_colors = {
+    'rmse':  '#2166ac',
+    'mae':   '#d6604d',
+    'qlike': '#1a9641',
+}
+
+bar_h = 0.22
+y     = np.arange(len(model_labels_r))
+
+fig, ax = plt.subplots(figsize=(9, 4.5))
+
+for k, metric in enumerate(METRICS):
+    offset = (k - 1) * bar_h
+    vals   = [metric_avg_ranks[metric][m] for m in model_labels_r]
+    ax.barh(y + offset, vals, bar_h * 0.92,
+            label=METRICS_LABELS[metric],
+            color=metric_colors[metric],
+            alpha=0.85, edgecolor='white', linewidth=0.4)
+
+# Pionowa linia "idealna ranga 1"
+ax.axvline(x=1, color='gray', linestyle='--', alpha=0.5, lw=1)
+
+ax.set_yticks(y)
+ax.set_yticklabels(model_labels_r, fontsize=11)
+ax.set_xlabel('Średnia pozycja w rankingu (1 = najlepszy)', fontsize=10)
+ax.set_xticks([1, 2, 3, 4, 5])
+ax.set_xlim(0.5, 5.5)
+ax.legend(fontsize=10, loc='lower right')
+ax.grid(True, axis='x', alpha=0.3)
+ax.set_title('Średnia pozycja w rankingu według metryki\n(uśredniono po 5 spółkach; modele posortowane od najlepszego)',
+             fontsize=11)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
 
 plt.tight_layout()
-plt.savefig("charts/08_comparison/ranking_comparison.png", dpi=150)
+plt.savefig("charts/08_comparison/ranking_comparison.png", dpi=150, bbox_inches='tight')
 plt.close()
 
 print("Zapisano wykresy w charts/08_comparison/")

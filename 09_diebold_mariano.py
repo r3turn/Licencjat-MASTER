@@ -8,6 +8,7 @@
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 from itertools import combinations
 
@@ -32,6 +33,7 @@ ALPHA = 0.05
 
 # Folder wyników
 os.makedirs("results/09_diebold_mariano", exist_ok=True)
+os.makedirs("charts/09_diebold_mariano", exist_ok=True)
 
 # ============================================================
 # WCZYTAJ PROGNOZY
@@ -236,6 +238,81 @@ md_content = "\n".join(md_lines)
 with open("results/09_diebold_mariano/dm_report.md", 'w', encoding='utf-8') as f:
     f.write(md_content)
 
+# ============================================================
+# WYKRES: Heatmapa wyników DM (spółki × pary modeli)
+# ============================================================
+
+# Wiersze: 5 spółek, kolumny: 6 par NN vs GARCH + 1 para LSTM vs GRU
+pairs = [
+    ('LSTM', 'GARCH(1,1)'),
+    ('LSTM', 'EGARCH(1,1)'),
+    ('LSTM', 'GJR-GARCH(1,1,1)'),
+    ('GRU',  'GARCH(1,1)'),
+    ('GRU',  'EGARCH(1,1)'),
+    ('GRU',  'GJR-GARCH(1,1,1)'),
+    ('LSTM', 'GRU'),
+]
+col_labels = ['LSTM\nvs\nGARCH', 'LSTM\nvs\nEGARCH', 'LSTM\nvs\nGJR',
+              'GRU\nvs\nGARCH',  'GRU\nvs\nEGARCH',  'GRU\nvs\nGJR',
+              'LSTM\nvs\nGRU']
+
+# color_matrix: +1 = model_1 wygrywa istotnie, -1 = model_2 wygrywa istotnie, 0 = brak różnicy
+color_matrix = np.zeros((len(TICKERS), len(pairs)))
+text_matrix  = np.empty((len(TICKERS), len(pairs)), dtype=object)
+
+for j, (m1, m2) in enumerate(pairs):
+    for i, ticker in enumerate(TICKERS):
+        row = results_df[
+            (results_df['ticker'] == ticker) &
+            (((results_df['model_1'] == m1) & (results_df['model_2'] == m2)) |
+             ((results_df['model_1'] == m2) & (results_df['model_2'] == m1)))
+        ]
+        if row.empty:
+            text_matrix[i, j] = '—'
+            continue
+        row = row.iloc[0]
+        p = row['p_value']
+        text_matrix[i, j] = f"p={p:.3f}"
+        if row['significant'] == 'TAK':
+            color_matrix[i, j] = 1 if row['winner'] == m1 else -1
+
+# Niestandardowa mapa kolorów: czerwony (-1), żółty (0), zielony (+1)
+from matplotlib.colors import LinearSegmentedColormap
+cmap = LinearSegmentedColormap.from_list('dm', ['#d73027', '#ffffbf', '#1a9850'], N=256)
+
+fig, ax = plt.subplots(figsize=(13, 5))
+im = ax.imshow(color_matrix, cmap=cmap, vmin=-1, vmax=1, aspect='auto')
+
+ax.set_xticks(range(len(pairs)))
+ax.set_xticklabels(col_labels, fontsize=10)
+ax.set_yticks(range(len(TICKERS)))
+ax.set_yticklabels(TICKERS, fontsize=11)
+
+# Linia oddzielająca LSTM vs GARCH i GRU vs GARCH
+ax.axvline(x=2.5, color='black', linewidth=2)
+# Linia oddzielająca LSTM vs GRU od reszty
+ax.axvline(x=5.5, color='black', linewidth=2)
+
+for i in range(len(TICKERS)):
+    for j in range(len(pairs)):
+        txt = text_matrix[i, j]
+        ax.text(j, i, txt, ha='center', va='center', fontsize=8.5, color='black')
+
+# Legenda ręczna
+from matplotlib.patches import Patch
+legend_elements = [
+    Patch(facecolor='#1a9850', label='Model z lewej wygrywa (p<0.05)'),
+    Patch(facecolor='#ffffbf', label='Brak istotnej różnicy'),
+    Patch(facecolor='#d73027', label='Model z prawej wygrywa (p<0.05)'),
+]
+ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.38, 1.02), fontsize=9)
+
+ax.set_title('Test Diebolda-Mariano: wyniki dla każdej spółki (α = 0.05)', fontsize=12)
+plt.tight_layout()
+plt.savefig("charts/09_diebold_mariano/dm_heatmap.png", dpi=150, bbox_inches='tight')
+plt.close()
+
 print(f"\nWyniki zapisane:")
 print(f"  - results/09_diebold_mariano/dm_results.csv")
 print(f"  - results/09_diebold_mariano/dm_report.md")
+print(f"  - charts/09_diebold_mariano/dm_heatmap.png")
