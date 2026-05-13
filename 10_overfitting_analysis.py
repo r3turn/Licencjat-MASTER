@@ -3,9 +3,10 @@
 # Sprawdza hipotezę H3: "Złożone modele sieci neuronowych są bardziej
 # podatne na przeuczenie (overfitting) przy ograniczonej próbie danych"
 #
-# Analiza:
-# 1. Krzywe train/val loss podczas treningu
-# 2. Gap między train a val loss (overfitting gap)
+# Metodologia (zgodna z resztą pipeline'u — podział 80/10/10):
+# 1. Trening na 80% train, walidacja na 10% val (te same zbiory co w 06_lstm/07_gru)
+# 2. Pełne 100 epok BEZ early stopping — żeby zobaczyć moment, w którym
+#    val loss zaczyna rosnąć (overfitting)
 # 3. Porównanie LSTM vs GRU pod kątem overfittingu
 
 import pandas as pd
@@ -16,8 +17,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from params import TICKERS, INITIAL_TRAIN_SIZE, WINDOW_SIZE, VAL_RATIO, set_seed
-from utils.lstm_utils import LSTMVolatility, prepare_sequences
+from params import TICKERS, TRAIN_RATIO, VAL_RATIO, WINDOW_SIZE, set_seed
+from utils.lstm_utils import LSTMVolatility
 from utils.gru_utils import GRUVolatility
 
 # ============================================================
@@ -42,7 +43,46 @@ returns = pd.read_parquet("data/processed/returns.parquet")
 print(f"Dane: {returns.shape}")
 
 # ============================================================
-# FUNKCJA TRENINGU Z PEŁNYM LOGOWANIEM
+# PRZYGOTOWANIE SEKWENCJI (zgodne z static_split_lstm/gru)
+# ============================================================
+
+def prepare_train_val_sequences(returns_ticker, window_size, train_ratio, val_ratio):
+    """
+    Buduje sekwencje train/val identycznie jak w static_split_lstm/gru.
+
+    Normalizacja: mean/std liczone wyłącznie ze zbioru treningowego.
+    Target: kwadrat znormalizowanej stopy zwrotu (proxy zmienności).
+    """
+    n = len(returns_ticker)
+    train_size = int(n * train_ratio)
+    val_size = int(n * val_ratio)
+    test_start = train_size + val_size
+
+    train_mean = np.mean(returns_ticker[:train_size])
+    train_std = np.std(returns_ticker[:train_size]) + 1e-8
+    returns_norm = (returns_ticker - train_mean) / train_std
+
+    # Sekwencje treningowe
+    X_train_list, y_train_list = [], []
+    for i in range(window_size, train_size):
+        X_train_list.append(returns_norm[i - window_size:i])
+        y_train_list.append(returns_norm[i] ** 2)
+    X_train = np.array(X_train_list).reshape(-1, window_size, 1)
+    y_train = np.array(y_train_list)
+
+    # Sekwencje walidacyjne
+    X_val_list, y_val_list = [], []
+    for i in range(train_size, test_start):
+        X_val_list.append(returns_norm[i - window_size:i])
+        y_val_list.append(returns_norm[i] ** 2)
+    X_val = np.array(X_val_list).reshape(-1, window_size, 1)
+    y_val = np.array(y_val_list)
+
+    return X_train, y_train, X_val, y_val
+
+
+# ============================================================
+# FUNKCJA TRENINGU Z PEŁNYM LOGOWANIEM (bez early stopping)
 # ============================================================
 
 def train_with_full_logging(model, X_train, y_train, X_val, y_val,
@@ -99,33 +139,20 @@ def train_with_full_logging(model, X_train, y_train, X_val, y_val,
 # ============================================================
 
 all_results = []
+curves = {}
 
 for ticker in TICKERS:
     print(f"\n{'='*50}")
     print(f"ANALIZA OVERFITTING - {ticker}")
     print('='*50)
 
-    # Przygotuj dane (użyj pierwszego okna treningowego)
     returns_ticker = returns[ticker].values
-    train_returns = returns_ticker[:INITIAL_TRAIN_SIZE]
 
-    # Normalizacja
-    train_mean = np.mean(train_returns)
-    train_std = np.std(train_returns) + 1e-8
-    train_returns_norm = (train_returns - train_mean) / train_std
+    X_train, y_train, X_val, y_val = prepare_train_val_sequences(
+        returns_ticker, WINDOW_SIZE, TRAIN_RATIO, VAL_RATIO
+    )
 
-    # Sekwencje
-    X_all, y_all = prepare_sequences(train_returns_norm, WINDOW_SIZE)
-
-    # Podział train/val
-    n_samples = len(X_all)
-    n_val = max(1, int(n_samples * VAL_RATIO))
-    n_train = n_samples - n_val
-
-    X_train, y_train = X_all[:n_train], y_all[:n_train]
-    X_val, y_val = X_all[n_train:], y_all[n_train:]
-
-    print(f"  Train samples: {n_train}, Val samples: {n_val}")
+    print(f"  Train samples: {len(X_train)}, Val samples: {len(X_val)}")
 
     # ---- LSTM ----
     print(f"\n  Training LSTM...")
@@ -152,20 +179,16 @@ for ticker in TICKERS:
     )
 
     # ---- METRYKI OVERFITTING ----
-
-    # 1. Minimum val loss i kiedy występuje
     lstm_best_epoch = np.argmin(lstm_val_loss)
     gru_best_epoch = np.argmin(gru_val_loss)
 
-    # 2. Overfitting gap (train - val loss na końcu)
     lstm_gap = lstm_val_loss[-1] - lstm_train_loss[-1]
     gru_gap = gru_val_loss[-1] - gru_train_loss[-1]
 
-    # 3. Val loss wzrost po minimum (overfitting severity)
     lstm_overfit_severity = lstm_val_loss[-1] / lstm_val_loss[lstm_best_epoch] - 1
     gru_overfit_severity = gru_val_loss[-1] / gru_val_loss[gru_best_epoch] - 1
 
-    result = {
+    all_results.append({
         'ticker': ticker,
         'lstm_best_epoch': lstm_best_epoch + 1,
         'lstm_min_val_loss': lstm_val_loss[lstm_best_epoch],
@@ -179,44 +202,46 @@ for ticker in TICKERS:
         'gru_final_train_loss': gru_train_loss[-1],
         'gru_gap': gru_gap,
         'gru_overfit_pct': gru_overfit_severity * 100,
-    }
-    all_results.append(result)
+    })
 
     print(f"\n  LSTM: best epoch={lstm_best_epoch+1}, overfitting={lstm_overfit_severity*100:.1f}%")
     print(f"  GRU:  best epoch={gru_best_epoch+1}, overfitting={gru_overfit_severity*100:.1f}%")
 
-    # ---- WYKRES ----
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    curves[ticker] = {
+        'lstm_train': lstm_train_loss, 'lstm_val': lstm_val_loss, 'lstm_best': lstm_best_epoch,
+        'gru_train':  gru_train_loss,  'gru_val':  gru_val_loss,  'gru_best':  gru_best_epoch,
+    }
 
-    epochs_range = range(1, EPOCHS + 1)
+# ---- WYKRES ZBIORCZY: 5 wierszy (spółki) × 2 kolumny (LSTM | GRU) ----
+fig, axes = plt.subplots(len(TICKERS), 2, figsize=(13, 2.4 * len(TICKERS)), sharex=True)
+epochs_range = range(1, EPOCHS + 1)
 
-    # LSTM
-    axes[0].plot(epochs_range, lstm_train_loss, label='Strata treningowa', color='blue')
-    axes[0].plot(epochs_range, lstm_val_loss, label='Strata walidacyjna', color='red')
-    axes[0].axvline(x=lstm_best_epoch+1, color='green', linestyle='--',
-                    label=f'Najlepsza epoka ({lstm_best_epoch+1})')
-    axes[0].axvspan(lstm_best_epoch+1, EPOCHS, alpha=0.06, color='red')
-    axes[0].set_xlabel('Epoka')
-    axes[0].set_ylabel('Strata MSE')
-    axes[0].set_title(f'{ticker} — LSTM: krzywe uczenia')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
+for row, ticker in enumerate(TICKERS):
+    c = curves[ticker]
+    for col, (model_label, train_loss, val_loss, best_e) in enumerate([
+        ('LSTM', c['lstm_train'], c['lstm_val'], c['lstm_best']),
+        ('GRU',  c['gru_train'],  c['gru_val'],  c['gru_best']),
+    ]):
+        ax = axes[row, col]
+        ax.plot(epochs_range, train_loss, color='steelblue', linewidth=1.0, label='Strata treningowa')
+        ax.plot(epochs_range, val_loss,   color='crimson',   linewidth=1.0, label='Strata walidacyjna')
+        ax.axvline(x=best_e + 1, color='green', linestyle='--', linewidth=0.9,
+                   label=f'Najlepsza epoka ({best_e + 1})')
+        ax.axvspan(best_e + 1, EPOCHS, alpha=0.06, color='red')
+        ax.set_title(f'{ticker} — {model_label}', loc='left', fontsize=10, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        if col == 0:
+            ax.set_ylabel('Strata MSE', fontsize=9)
+        if row == len(TICKERS) - 1:
+            ax.set_xlabel('Epoka', fontsize=9)
+        if row == 0 and col == 1:
+            ax.legend(loc='upper right', fontsize=8)
 
-    # GRU
-    axes[1].plot(epochs_range, gru_train_loss, label='Strata treningowa', color='blue')
-    axes[1].plot(epochs_range, gru_val_loss, label='Strata walidacyjna', color='red')
-    axes[1].axvline(x=gru_best_epoch+1, color='green', linestyle='--',
-                    label=f'Najlepsza epoka ({gru_best_epoch+1})')
-    axes[1].axvspan(gru_best_epoch+1, EPOCHS, alpha=0.06, color='red')
-    axes[1].set_xlabel('Epoka')
-    axes[1].set_ylabel('Strata MSE')
-    axes[1].set_title(f'{ticker} — GRU: krzywe uczenia')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(f"charts/10_overfitting/learning_curves_{ticker}.png", dpi=150)
-    plt.close()
+fig.suptitle('Krzywe uczenia LSTM i GRU — 100 epok bez early stopping (5 spółek)',
+             fontsize=12, fontweight='bold', y=0.995)
+plt.tight_layout(rect=[0, 0, 1, 0.985])
+plt.savefig("charts/10_overfitting/learning_curves_all.png", dpi=150, bbox_inches='tight')
+plt.close()
 
 # ============================================================
 # PODSUMOWANIE
@@ -256,9 +281,10 @@ md_lines.append("# Analiza Overfitting - Hipoteza H3\n")
 md_lines.append("**H3:** Złożone modele sieci neuronowych są bardziej podatne na przeuczenie.\n")
 
 md_lines.append("## Metodologia\n")
-md_lines.append("- Trening przez 100 epok BEZ early stopping")
-md_lines.append("- Obserwacja rozbieżności train vs validation loss")
-md_lines.append("- Metryka: % wzrost val loss po osiągnięciu minimum\n")
+md_lines.append("- Podział danych 80/10/10 (train/val/test) — zgodny z resztą pipeline'u")
+md_lines.append("- Trening przez 100 epok BEZ early stopping na zbiorze treningowym (80%)")
+md_lines.append("- Walidacja na zbiorze val (10%) — obserwacja rozbieżności train vs val loss")
+md_lines.append("- Metryka overfittingu: % wzrost val loss po osiągnięciu minimum\n")
 
 md_lines.append("## Wyniki\n")
 md_lines.append("| Ticker | LSTM best epoch | LSTM overfit % | GRU best epoch | GRU overfit % |")
@@ -305,4 +331,4 @@ with open("results/10_overfitting/overfitting_report.md", 'w', encoding='utf-8')
 print(f"\nWyniki zapisane:")
 print(f"  - results/10_overfitting/overfitting_analysis.csv")
 print(f"  - results/10_overfitting/overfitting_report.md")
-print(f"  - charts/10_overfitting/learning_curves_*.png")
+print(f"  - charts/10_overfitting/learning_curves_all.png")

@@ -22,15 +22,6 @@ def mae(y_true, y_pred):
     return np.mean(np.abs(y_true - y_pred))
 
 
-def mape(y_true, y_pred, epsilon=1e-10):
-    """
-    Mean Absolute Percentage Error.
-
-    Uwaga: problematyczna gdy y_true bliskie zeru.
-    """
-    return np.mean(np.abs((y_true - y_pred) / (y_true + epsilon))) * 100
-
-
 def qlike(y_true, y_pred, epsilon=1e-10):
     """
     QLIKE Loss - standard w literaturze o zmienności.
@@ -99,11 +90,10 @@ def calculate_all_metrics(y_true, y_pred):
 
     Returns:
     --------
-    dict z kluczami: rmse, mae, mape, qlike
+    dict z kluczami: rmse, mae, qlike
     """
     return {
         'rmse': rmse(y_true, y_pred),
         'mae': mae(y_true, y_pred),
-        'mape': mape(y_true, y_pred),
         'qlike': qlike(y_true, y_pred),
     }

@@ -1,8 +1,8 @@
 # 06_lstm.py - Model LSTM dla prognozowania zmienności
 #
-# Sieć LSTM (Long Short-Term Memory) jako alternatywa dla modeli GARCH.
-# Zalety: może uchwycić nieliniowe zależności w danych.
-# Wady: więcej hiperparametrów, dłuższy czas trenowania.
+# Sieć LSTM (Long Short-Term Memory) — alternatywa dla modeli GARCH.
+# Może uchwycić nieliniowe zależności w danych.
+# Metodologia: podział 80/10/10, sliding window L=30 na zbiorze testowym.
 
 import pandas as pd
 import numpy as np
@@ -10,10 +10,8 @@ import matplotlib.pyplot as plt
 import os
 import torch
 
-from params import (
-    TICKERS, INITIAL_TRAIN_SIZE, WINDOW_SIZE, VAL_RATIO, set_seed
-)
-from utils.lstm_utils import walk_forward_lstm
+from params import TICKERS, TRAIN_RATIO, VAL_RATIO, WINDOW_SIZE, set_seed
+from utils.lstm_utils import static_split_lstm
 from utils.metrics import calculate_all_metrics
 
 # ============================================================
@@ -21,20 +19,15 @@ from utils.metrics import calculate_all_metrics
 # ============================================================
 
 # Architektura sieci
-HIDDEN_SIZE = 32      # Rozmiar warstwy ukrytej (32-64 typowo wystarcza)
-NUM_LAYERS = 1        # Liczba warstw LSTM (1-2)
-DROPOUT = 0.1         # Dropout dla regularyzacji
+HIDDEN_SIZE   = 32      # Rozmiar warstwy ukrytej
+NUM_LAYERS    = 1       # Liczba warstw LSTM
+DROPOUT       = 0.1     # Dropout dla regularyzacji
 
 # Trenowanie
-EPOCHS = 100          # Max epok (early stopping zazwyczaj zatrzyma wcześniej)
-BATCH_SIZE = 32       # Rozmiar batcha
-LEARNING_RATE = 0.001 # Learning rate dla Adam
-PATIENCE = 15         # Early stopping patience
-
-# Walk-forward
-# UWAGA: LSTM trenuje się wolniej niż GARCH, więc refit co 250 dni
-# zamiast co 50 jak w GARCH (kompromis czas vs świeżość modelu)
-REFIT_EVERY_LSTM = 250
+EPOCHS        = 100     # Max epok (early stopping zazwyczaj zatrzyma wcześniej)
+BATCH_SIZE    = 32      # Rozmiar batcha
+LEARNING_RATE = 0.001   # Learning rate dla Adam
+PATIENCE      = 15      # Early stopping patience
 
 MODEL_NAME = "LSTM"
 
@@ -42,45 +35,38 @@ MODEL_NAME = "LSTM"
 # SETUP
 # ============================================================
 
-# Reproducibility - KLUCZOWE dla sieci neuronowych
 set_seed()
 
-# Sprawdź dostępność GPU
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Używam: {DEVICE.upper()}")
 
-# Foldery
 os.makedirs("results/06_lstm", exist_ok=True)
 os.makedirs("charts/06_lstm", exist_ok=True)
 
-# Wczytaj dane
 returns = pd.read_parquet("data/processed/returns.parquet")
 print(f"Wczytano dane: {returns.shape}")
 print(f"Okres: {returns.index[0].date()} - {returns.index[-1].date()}")
 
 print(f"\nKonfiguracja LSTM:")
-print(f"  Hidden size: {HIDDEN_SIZE}")
-print(f"  Layers: {NUM_LAYERS}")
-print(f"  Window size: {WINDOW_SIZE}")
-print(f"  Refit every: {REFIT_EVERY_LSTM} dni")
+print(f"  Hidden size: {HIDDEN_SIZE}, Layers: {NUM_LAYERS}, Dropout: {DROPOUT}")
+print(f"  Window size (L): {WINDOW_SIZE}, Epochs: {EPOCHS}, Patience: {PATIENCE}")
 
 # ============================================================
-# WALK-FORWARD VALIDATION
+# EWALUACJA 80/10/10
 # ============================================================
 
 all_results = []
+panels = {}
 
 for ticker in TICKERS:
     print(f"\n{'='*50}")
     print(f"{MODEL_NAME} - {ticker}")
     print('='*50)
 
-    # Walk-forward validation
-    wf_result = walk_forward_lstm(
+    result = static_split_lstm(
         returns_series=returns[ticker],
         window_size=WINDOW_SIZE,
-        initial_train_size=INITIAL_TRAIN_SIZE,
-        refit_every=REFIT_EVERY_LSTM,
+        train_ratio=TRAIN_RATIO,
         val_ratio=VAL_RATIO,
         hidden_size=HIDDEN_SIZE,
         num_layers=NUM_LAYERS,
@@ -92,29 +78,23 @@ for ticker in TICKERS:
         device=DEVICE,
     )
 
-    forecasts = wf_result['forecasts']
-    realized = wf_result['realized']
-    dates = wf_result['dates']
+    forecasts = result['forecasts']
+    realized  = result['realized']
+    dates     = result['dates']
 
-    # Oblicz metryki
     metrics = calculate_all_metrics(realized, forecasts)
 
     print(f"\nWyniki {ticker}:")
     print(f"  RMSE:  {metrics['rmse']:.6f}")
     print(f"  MAE:   {metrics['mae']:.6f}")
     print(f"  QLIKE: {metrics['qlike']:.4f}")
-    print(f"  Model trenowany {wf_result['fit_count']} razy")
 
-    # Zapisz wyniki
-    result_entry = {
+    all_results.append({
         'ticker': ticker,
         'model': MODEL_NAME,
         **metrics,
-        'fit_count': wf_result['fit_count'],
-    }
-    all_results.append(result_entry)
+    })
 
-    # Zapisz prognozy
     forecast_df = pd.DataFrame({
         'date': dates,
         'forecast': forecasts,
@@ -123,28 +103,33 @@ for ticker in TICKERS:
     })
     forecast_df.to_parquet(f"results/06_lstm/forecasts_{ticker}.parquet")
 
-    # ============================================================
-    # WYKRESY
-    # ============================================================
+    panels[ticker] = {'dates': dates, 'realized': realized, 'forecasts': forecasts}
 
-    # Stopy zwrotu + pasma ±2σ
-    ret_aligned = returns[ticker].reindex(pd.to_datetime(dates)).values
-    sigma = np.sqrt(forecasts)
+# ============================================================
+# WYKRES ZBIORCZY (5 paneli, σ_t prognoza vs |r_t| realizacja)
+# ============================================================
 
-    fig, ax = plt.subplots(figsize=(14, 5))
-    ax.plot(dates, ret_aligned, color='steelblue', linewidth=0.5, alpha=0.8, label='Stopy zwrotu')
-    ax.plot(dates,  2 * sigma, color='red', linewidth=0.9, label=f'±2σ ({MODEL_NAME})')
-    ax.plot(dates, -2 * sigma, color='red', linewidth=0.9)
-    ax.fill_between(dates, -2 * sigma, 2 * sigma, alpha=0.15, color='red')
-    ax.axhline(0, color='black', linewidth=0.5)
-    ax.set_ylabel('Stopa zwrotu / ±2σ')
-    ax.set_xlabel('Data')
-    ax.set_title(f'{ticker} — {MODEL_NAME}: stopy zwrotu i pasma zmienności ±2σ')
-    ax.legend(loc='upper right', fontsize=9)
+fig, axes = plt.subplots(len(TICKERS), 1, figsize=(14, 2.6 * len(TICKERS)), sharex=False)
+all_sigma_real = np.concatenate([np.sqrt(np.clip(panels[t]['realized'], 0, None)) for t in TICKERS])
+y_max = np.percentile(all_sigma_real, 99) * 1.05
+
+for ax, ticker in zip(axes, TICKERS):
+    dates    = panels[ticker]['dates']
+    real_sig = np.sqrt(np.clip(panels[ticker]['realized'], 0, None))
+    pred_sig = np.sqrt(np.clip(panels[ticker]['forecasts'], 0, None))
+    ax.plot(dates, real_sig, color='#000000', linewidth=0.6, alpha=0.85, label=r'Realizacja $|r_t|$')
+    ax.plot(dates, pred_sig, color='#e74c3c', linewidth=1.1, label=fr'Prognoza $\hat{{\sigma}}_t$ ({MODEL_NAME})')
+    ax.set_ylim(0, y_max)
+    ax.set_ylabel(r'$\sigma_t$', fontsize=10)
+    ax.set_title(ticker, loc='left', fontsize=11, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=8)
     ax.grid(True, alpha=0.25)
-    plt.tight_layout()
-    plt.savefig(f"charts/06_lstm/forecast_vs_realized_{ticker}.png", dpi=150)
-    plt.close()
+axes[-1].set_xlabel('Data')
+fig.suptitle(f'{MODEL_NAME} — prognoza odchylenia standardowego vs realizacja $|r_t|$ (5 spółek)',
+             fontsize=12, fontweight='bold', y=0.995)
+plt.tight_layout(rect=[0, 0, 1, 0.985])
+plt.savefig("charts/06_lstm/forecast_vs_realized_all.png", dpi=150, bbox_inches='tight')
+plt.close()
 
 # ============================================================
 # PODSUMOWANIE
@@ -159,4 +144,4 @@ print('='*50)
 print(results_df.to_string(index=False))
 
 print(f"\nWyniki zapisane w results/06_lstm/")
-print(f"Wykresy zapisane w charts/06_lstm/")
+print(f"Wykres zbiorczy: charts/06_lstm/forecast_vs_realized_all.png")

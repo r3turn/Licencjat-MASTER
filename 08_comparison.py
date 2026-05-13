@@ -211,176 +211,101 @@ print("Zapisano: results/08_comparison/all_metrics.csv")
 # WYKRESY
 # ============================================================
 
-print("\nGeneruję wykresy...")
+print("\nGeneruję wykres metryk...")
 
-# Kolory dla modeli
-colors = {
-    'GARCH(1,1)': 'steelblue',
-    'EGARCH(1,1)': 'darkorange',
-    'GJR-GARCH(1,1,1)': 'forestgreen',
-    'LSTM': 'purple',
-    'GRU': 'teal',
+# Kolejność modeli pogrupowana wg rodziny (GARCH-y najpierw, sieci dalej)
+model_order = [
+    'GARCH(1,1)', 'EGARCH(1,1)', 'GJR-GARCH(1,1,1)',
+    'LSTM', 'GRU',
+]
+model_order = [m for m in model_order if m in MODELS.values()]
+
+# Kolory wg rodziny modeli (GARCH = niebieskie tony, NN = pomarańczowo-czerwone)
+family_colors = {
+    'GARCH(1,1)':       '#2c5f8d',
+    'EGARCH(1,1)':      '#4a86b8',
+    'GJR-GARCH(1,1,1)': '#73a9d4',
+    'LSTM':             '#c0392b',
+    'GRU':              '#e67e22',
 }
+bar_colors = [family_colors[m] for m in model_order]
 
-# 1. Kombinowany wykres NN: LSTM + GRU w stylu ±2σ (NVDA)
-import matplotlib.dates as mdates
+# Markery per ticker (kropki rzeczywistych obserwacji)
+ticker_markers = ['o', 's', '^', 'D', 'v']
+ticker_color = '#1a1a1a'
 
-CHART_TICKER = "NVDA"
-covid = pd.Timestamp('2020-03-16')
-returns_all = pd.read_parquet("data/processed/returns.parquet")
-
-lstm_df = pd.read_parquet(f"results/06_lstm/forecasts_{CHART_TICKER}.parquet")
-gru_df  = pd.read_parquet(f"results/07_gru/forecasts_{CHART_TICKER}.parquet")
-
-for df in (lstm_df, gru_df):
-    df['date'] = pd.to_datetime(df['date'])
-    df.set_index('date', inplace=True)
-
-idx_nn = lstm_df.index.intersection(gru_df.index)
-lstm_df = lstm_df.loc[idx_nn]; gru_df = gru_df.loc[idx_nn]
-dates_nn = lstm_df.index
-
-ret_nn      = returns_all[CHART_TICKER].reindex(dates_nn).values
-lstm_sigma  = np.sqrt(lstm_df['forecast'].values)
-gru_sigma   = np.sqrt(gru_df['forecast'].values)
-
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8),
-                                gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
-fig.subplots_adjust(hspace=0.08)
-
-# Stopy zwrotu
-ax1.plot(dates_nn, ret_nn, color='steelblue', lw=0.5, alpha=0.8, label='Stopy zwrotu', zorder=2)
-
-# Pasma ±2σ — LSTM
-ax1.plot(dates_nn,  2 * lstm_sigma, color='crimson',    lw=1.0, label='±2σ LSTM', zorder=3)
-ax1.plot(dates_nn, -2 * lstm_sigma, color='crimson',    lw=1.0, zorder=3)
-
-# Pasma ±2σ — GRU
-ax1.plot(dates_nn,  2 * gru_sigma, color='darkorange', lw=1.0, linestyle='--', label='±2σ GRU', zorder=3)
-ax1.plot(dates_nn, -2 * gru_sigma, color='darkorange', lw=1.0, linestyle='--', zorder=3)
-
-ax1.axhline(0, color='black', lw=0.5)
-ax1.axvline(x=covid, color='gray', linestyle=':', lw=1.2, alpha=0.8)
-ax1.text(covid, float(np.nanmax(np.abs(ret_nn))) * 0.85,
-         'COVID\n2020', fontsize=8, color='gray', ha='center')
-
-ax1.set_ylabel('Stopa zwrotu / ±2σ', fontsize=11)
-ax1.set_title(f'{CHART_TICKER} — LSTM i GRU: stopy zwrotu i pasma zmienności ±2σ', fontsize=13)
-ax1.legend(loc='upper left', fontsize=10)
-ax1.grid(True, alpha=0.25)
-
-# Dolny panel: różnica σ_LSTM − σ_GRU
-diff_sigma = (lstm_sigma - gru_sigma) * 1e4
-diff_colors = ['crimson' if d >= 0 else 'darkorange' for d in diff_sigma]
-ax2.bar(dates_nn, diff_sigma, width=1, color=diff_colors, alpha=0.7)
-ax2.axhline(0, color='black', lw=0.8)
-ax2.set_ylabel('σ_LSTM − σ_GRU\n(×10⁴)', fontsize=9)
-ax2.set_xlabel('Data', fontsize=11)
-ax2.grid(True, alpha=0.25)
-ax2.xaxis.set_major_locator(mdates.YearLocator(2))
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-
-plt.tight_layout()
-plt.savefig("charts/08_comparison/nn_comparison.png", dpi=150, bbox_inches='tight')
-plt.close()
-
-# 3. Wykres radarowy (średnie metryki znormalizowane)
-fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
-
-# Normalizacja metryk (0-1, gdzie 1 = najgorszy)
-normalized = {}
-for metric in METRICS:
-    pivot = create_comparison_table(metric)
-    means = pivot.mean()
-    # Normalizuj do 0-1
-    min_val, max_val = means.min(), means.max()
-    if max_val > min_val:
-        normalized[metric] = (means - min_val) / (max_val - min_val)
-    else:
-        normalized[metric] = means * 0
-
-# Przygotuj dane do wykresu
-angles = np.linspace(0, 2 * np.pi, len(METRICS), endpoint=False).tolist()
-angles += angles[:1]  # zamknij wykres
-
-for model in MODELS.values():
-    if model not in normalized[METRICS[0]].index:
-        continue
-    values = [normalized[m][model] for m in METRICS]
-    values += values[:1]  # zamknij
-    ax.plot(angles, values, 'o-', linewidth=2, label=model, color=colors.get(model, 'gray'))
-    ax.fill(angles, values, alpha=0.1, color=colors.get(model, 'gray'))
-
-ax.set_xticks(angles[:-1])
-ax.set_xticklabels([METRICS_LABELS[m] for m in METRICS])
-ax.set_title('Porównanie modeli (znormalizowane)\nMniejszy obszar = lepszy model')
-ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
-
-plt.tight_layout()
-plt.savefig("charts/08_comparison/radar_comparison.png", dpi=150)
-plt.close()
-
-# 3. Ranking: pogrupowany wykres słupkowy (średnia ranga wg metryki)
-model_list = list(MODELS.values())
-n_models   = len(model_list)
-
-# Oblicz średnią rangę każdego modelu dla każdej metryki (uśrednione po tickerach)
-metric_avg_ranks = {}   # metric -> {model: avg_rank}
-overall_avg      = {model: 0.0 for model in model_list}
-
-for metric in METRICS:
-    pivot = create_comparison_table(metric)
-    metric_avg_ranks[metric] = {}
-    for model in model_list:
-        ranks = [pivot.loc[ticker].rank()[model] for ticker in TICKERS]
-        metric_avg_ranks[metric][model] = np.mean(ranks)
-        overall_avg[model] += np.mean(ranks)
-
-for model in model_list:
-    overall_avg[model] /= len(METRICS)
-
-# Sortuj modele od najlepszego (najniższy overall avg rank)
-model_labels_r = sorted(model_list, key=lambda m: overall_avg[m])
-
-metric_colors = {
-    'rmse':  '#2166ac',
-    'mae':   '#d6604d',
-    'qlike': '#1a9641',
+# Skalowanie metryk żeby etykiety były czytelne
+metric_scale = {
+    'rmse':  (1e3, r'RMSE  ($\times 10^{-3}$)'),
+    'mae':   (1e4, r'MAE  ($\times 10^{-4}$)'),
+    'qlike': (1.0, 'QLIKE'),
 }
+metric_fmt = {'rmse': '{:.4f}', 'mae': '{:.3f}', 'qlike': '{:.4f}'}
 
-bar_h = 0.22
-y     = np.arange(len(model_labels_r))
+fig, axes = plt.subplots(1, 3, figsize=(14, 5.0))
 
-fig, ax = plt.subplots(figsize=(9, 4.5))
+for ax_i, metric in enumerate(METRICS):
+    ax = axes[ax_i]
+    pivot = create_comparison_table(metric)
 
-for k, metric in enumerate(METRICS):
-    offset = (k - 1) * bar_h
-    vals   = [metric_avg_ranks[metric][m] for m in model_labels_r]
-    ax.barh(y + offset, vals, bar_h * 0.92,
-            label=METRICS_LABELS[metric],
-            color=metric_colors[metric],
-            alpha=0.85, edgecolor='white', linewidth=0.4)
+    scale, ylabel = metric_scale[metric]
+    means = np.array([pivot[m].mean() for m in model_order]) * scale
+    per_ticker_vals = {m: pivot[m].values * scale for m in model_order}
 
-# Pionowa linia "idealna ranga 1"
-ax.axvline(x=1, color='gray', linestyle='--', alpha=0.5, lw=1)
+    x = np.arange(len(model_order))
+    bars = ax.bar(x, means, color=bar_colors,
+                  edgecolor='#222222', linewidth=0.7, width=0.62,
+                  alpha=0.92, zorder=2)
 
-ax.set_yticks(y)
-ax.set_yticklabels(model_labels_r, fontsize=11)
-ax.set_xlabel('Średnia pozycja w rankingu (1 = najlepszy)', fontsize=10)
-ax.set_xticks([1, 2, 3, 4, 5])
-ax.set_xlim(0.5, 5.5)
-ax.legend(fontsize=10, loc='lower right')
-ax.grid(True, axis='x', alpha=0.3)
-ax.set_title('Średnia pozycja w rankingu według metryki\n(uśredniono po 5 spółkach; modele posortowane od najlepszego)',
-             fontsize=11)
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
+    # Pogrubiona ramka dla najlepszego (najmniejsza wartość)
+    best_idx = int(np.argmin(means))
+    bars[best_idx].set_linewidth(2.6)
+    bars[best_idx].set_edgecolor('#000000')
 
-plt.tight_layout()
-plt.savefig("charts/08_comparison/ranking_comparison.png", dpi=150, bbox_inches='tight')
+    rng_y = means.max() - means.min()
+    label_offset = rng_y * 0.10 if metric != 'qlike' else abs(rng_y) * 0.10
+
+    for bar, val in zip(bars, means):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                val + label_offset,
+                metric_fmt[metric].format(val),
+                ha='center', va='bottom', fontsize=9.5, color='#111111',
+                fontweight='bold')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_order, rotation=25, ha='right', fontsize=9.5)
+    ax.set_ylabel(ylabel, fontsize=10.5)
+    ax.set_title(METRICS_LABELS[metric], fontsize=12.5, fontweight='bold', pad=8)
+    ax.grid(True, axis='y', alpha=0.3, linestyle='--', linewidth=0.6, zorder=0)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.tick_params(axis='y', labelsize=9)
+
+    # Linia odniesienia: najlepszy model (przerywana)
+    ax.axhline(y=means.min(), color='#444444', linestyle=':', linewidth=0.9, alpha=0.7, zorder=1)
+
+    # Y-lim: ZOOM na różnice między modelami (margines proporcjonalny do rozrzutu średnich)
+    y_low  = means.min() - rng_y * 0.35
+    y_high = means.max() + rng_y * 0.55
+    ax.set_ylim(y_low, y_high)
+
+# Legenda (wspólna, pod wykresami)
+from matplotlib.patches import Patch
+legend_elems = [
+    Patch(facecolor='#4a86b8', edgecolor='#222222', label='Modele rodziny GARCH'),
+    Patch(facecolor='#c0392b', edgecolor='#222222', label='Sieci rekurencyjne (LSTM, GRU)'),
+    Patch(facecolor='none',    edgecolor='#000000', linewidth=2.6, label='Najlepszy w danej metryce'),
+]
+fig.legend(handles=legend_elems, loc='lower center',
+           bbox_to_anchor=(0.5, -0.02), ncol=3, fontsize=9.5, frameon=False)
+
+fig.suptitle('Porównanie modeli prognozowania zmienności — średnie metryki na zbiorze testowym (n = 5 spółek)',
+             fontsize=12.5, fontweight='bold', y=1.00)
+plt.tight_layout(rect=[0, 0.05, 1, 0.98])
+plt.savefig("charts/08_comparison/metrics_comparison.png", dpi=150, bbox_inches='tight')
 plt.close()
 
-print("Zapisano wykresy w charts/08_comparison/")
+print("Zapisano wykres: charts/08_comparison/metrics_comparison.png")
 
 # ============================================================
 # PODSUMOWANIE

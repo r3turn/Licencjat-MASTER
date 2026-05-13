@@ -75,9 +75,26 @@ print(f"  GARCH wygrywa istotnie: {garch_wins_dm}")
 print(f"  Brak istotnej różnicy: {no_diff_dm}")
 
 # Wniosek H1
-h1_confirmed = (best_nn_qlike < best_garch_qlike) and (nn_wins_dm > garch_wins_dm)
+# Trzy poziomy: POTWIERDZONA / CZĘŚCIOWO POTWIERDZONA / ODRZUCONA
+# - POTWIERDZONA: NN dominuje w średnich metrykach ORAZ wygrywa istotnie znaczącą większość par DM
+# - CZĘŚCIOWO POTWIERDZONA: NN wygrywa w średnich, ale większość par DM bez istotnej różnicy
+# - ODRZUCONA: NN nie wygrywa w średnich metrykach ani w teście DM
+total_dm        = nn_wins_dm + garch_wins_dm + no_diff_dm
+no_diff_share   = no_diff_dm / total_dm if total_dm > 0 else 0
+nn_metric_wins  = best_nn_qlike < best_garch_qlike
+nn_dm_advantage = nn_wins_dm > garch_wins_dm
 
-print(f"\n>>> H1: {'POTWIERDZONA' if h1_confirmed else 'ODRZUCONA'}")
+if nn_metric_wins and nn_dm_advantage and no_diff_share <= 0.5:
+    h1_status = "POTWIERDZONA"
+elif (nn_metric_wins or nn_dm_advantage):
+    h1_status = "CZĘŚCIOWO POTWIERDZONA"
+else:
+    h1_status = "ODRZUCONA"
+
+h1_confirmed = (h1_status == "POTWIERDZONA")
+
+print(f"\n>>> H1: {h1_status}")
+print(f"    (brak istotnej różnicy w {no_diff_dm}/{total_dm} par = {no_diff_share*100:.0f}%)")
 
 # ============================================================
 # HIPOTEZA H3
@@ -144,16 +161,23 @@ md.append(f"- GARCH wygrywa istotnie: **{garch_wins_dm}** porównań")
 md.append(f"- Brak istotnej różnicy: **{no_diff_dm}** porównań\n")
 
 md.append("### Wniosek\n")
-if h1_confirmed:
-    md.append("**HIPOTEZA H1: POTWIERDZONA**\n")
+md.append(f"**HIPOTEZA H1: {h1_status}**\n")
+if h1_status == "POTWIERDZONA":
     md.append("Modele LSTM i GRU osiągają statystycznie istotnie lepsze wyniki ")
     md.append("niż klasyczne modele GARCH w prognozowaniu zmienności. ")
     md.append(f"W teście Diebold-Mariano sieci neuronowe wygrywają {nn_wins_dm} razy ")
     md.append(f"vs {garch_wins_dm} dla GARCH. Średni QLIKE dla najlepszego modelu NN ")
     md.append(f"({best_nn_qlike:.4f}) jest niższy niż dla najlepszego GARCH ({best_garch_qlike:.4f}).\n")
+elif h1_status == "CZĘŚCIOWO POTWIERDZONA":
+    md.append(f"Sieci neuronowe osiągają lepsze średnie metryki ({best_nn_qlike:.4f} QLIKE ")
+    md.append(f"vs {best_garch_qlike:.4f} dla najlepszego GARCH) i wygrywają więcej par ")
+    md.append(f"w teście Diebold-Mariano ({nn_wins_dm} vs {garch_wins_dm}). Jednak w ")
+    md.append(f"{no_diff_dm} z {total_dm} par DM ({no_diff_share*100:.0f}%) ")
+    md.append("nie odrzucono hipotezy zerowej o równej dokładności, ")
+    md.append("co nie pozwala mówić o jednoznacznej dominacji sieci nad modelami GARCH.\n")
 else:
-    md.append("**HIPOTEZA H1: CZĘŚCIOWO POTWIERDZONA**\n")
-    md.append("Wyniki są mieszane - sieci neuronowe nie dominują jednoznacznie.\n")
+    md.append("Wyniki nie potwierdzają hipotezy — sieci neuronowe nie osiągają ")
+    md.append("istotnie lepszych wyników niż modele GARCH.\n")
 
 # H3
 md.append("\n## Hipoteza H3\n")
@@ -186,8 +210,8 @@ else:
 md.append("\n## Podsumowanie\n")
 md.append("| Hipoteza | Status | Kluczowy dowód |")
 md.append("|----------|--------|----------------|")
-md.append(f"| H1 | **{'POTWIERDZONA' if h1_confirmed else 'CZĘŚCIOWO'}** | DM test: NN {nn_wins_dm} vs GARCH {garch_wins_dm} |")
-md.append(f"| H3 | **{'POTWIERDZONA' if h3_confirmed else 'CZĘŚCIOWO'}** | Avg overfitting: {avg_overfit:.1f}% |")
+md.append(f"| H1 | **{h1_status}** | DM: NN {nn_wins_dm}, GARCH {garch_wins_dm}, brak różnicy {no_diff_dm}/{total_dm} |")
+md.append(f"| H3 | **{'POTWIERDZONA' if h3_confirmed else 'CZĘŚCIOWO POTWIERDZONA'}** | Avg overfitting: {avg_overfit:.1f}% |")
 
 md_content = "\n".join(md)
 

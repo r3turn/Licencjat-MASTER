@@ -14,6 +14,8 @@ scripts = [
     "09_diebold_mariano.py",
     "10_overfitting_analysis.py",
     "11_hipotezy_podsumowanie.py",
+    "12_garch_params.py",
+    "13_forecast_comparison.py",
 ]
 
 for script in scripts:

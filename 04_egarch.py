@@ -1,16 +1,17 @@
 # 04_egarch.py - Model EGARCH(1,1)
 #
-# Exponential GARCH - modeluje asymetrię (leverage effect).
+# Exponential GARCH — modeluje asymetrię (leverage effect).
 # Logarytmiczna specyfikacja gwarantuje dodatnią wariancję.
 # Negatywne szoki mają większy wpływ na zmienność niż pozytywne.
+# Metodologia: podział 80/10/10, prognozy 1-step-ahead na zbiorze testowym.
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-from params import TICKERS, INITIAL_TRAIN_SIZE, REFIT_EVERY
-from utils.walk_forward import walk_forward_garch
+from params import TICKERS, TRAIN_RATIO, VAL_RATIO
+from utils.static_split import static_split_garch
 from utils.metrics import calculate_all_metrics
 
 # Foldery
@@ -32,43 +33,37 @@ MODEL_NAME = "EGARCH(1,1)"
 
 # Wyniki dla wszystkich tickerów
 all_results = []
+panels = {}
 
 for ticker in TICKERS:
     print(f"\n{'='*50}")
     print(f"{MODEL_NAME} - {ticker}")
     print('='*50)
 
-    # Walk-forward validation
-    wf_result = walk_forward_garch(
+    result = static_split_garch(
         returns_series=returns[ticker],
         model_config=MODEL_CONFIG,
-        initial_train_size=INITIAL_TRAIN_SIZE,
-        refit_every=REFIT_EVERY,
+        train_ratio=TRAIN_RATIO,
+        val_ratio=VAL_RATIO,
     )
 
-    forecasts = wf_result['forecasts']
-    realized = wf_result['realized']
-    dates = wf_result['dates']
+    forecasts = result['forecasts']
+    realized  = result['realized']
+    dates     = result['dates']
 
-    # Oblicz metryki
     metrics = calculate_all_metrics(realized, forecasts)
 
     print(f"\nWyniki {ticker}:")
     print(f"  RMSE:  {metrics['rmse']:.6f}")
     print(f"  MAE:   {metrics['mae']:.6f}")
     print(f"  QLIKE: {metrics['qlike']:.4f}")
-    print(f"  Model fitowany {wf_result['fit_count']} razy")
 
-    # Zapisz wyniki
-    result_entry = {
+    all_results.append({
         'ticker': ticker,
         'model': MODEL_NAME,
         **metrics,
-        'fit_count': wf_result['fit_count'],
-    }
-    all_results.append(result_entry)
+    })
 
-    # Zapisz prognozy
     forecast_df = pd.DataFrame({
         'date': dates,
         'forecast': forecasts,
@@ -77,34 +72,38 @@ for ticker in TICKERS:
     })
     forecast_df.to_parquet(f"results/04_egarch/forecasts_{ticker}.parquet")
 
-    # --- WYKRESY ---
+    panels[ticker] = {'dates': dates, 'realized': realized, 'forecasts': forecasts}
 
-    # Stopy zwrotu + pasma ±2σ
-    ret_aligned = returns[ticker].reindex(pd.to_datetime(dates)).values
-    sigma = np.sqrt(forecasts)
+# --- COMBO: 5 paneli (1 per spółka), σ_t prognoza vs |r_t| realizacja ---
+fig, axes = plt.subplots(len(TICKERS), 1, figsize=(14, 2.6 * len(TICKERS)), sharex=False)
+all_sigma_real = np.concatenate([np.sqrt(np.clip(panels[t]['realized'], 0, None)) for t in TICKERS])
+y_max = np.percentile(all_sigma_real, 99) * 1.05
 
-    fig, ax = plt.subplots(figsize=(14, 5))
-    ax.plot(dates, ret_aligned, color='steelblue', linewidth=0.5, alpha=0.8, label='Stopy zwrotu')
-    ax.plot(dates,  2 * sigma, color='red', linewidth=0.9, label=f'±2σ ({MODEL_NAME})')
-    ax.plot(dates, -2 * sigma, color='red', linewidth=0.9)
-    ax.fill_between(dates, -2 * sigma, 2 * sigma, alpha=0.15, color='red')
-    ax.axhline(0, color='black', linewidth=0.5)
-    ax.set_ylabel('Stopa zwrotu / ±2σ')
-    ax.set_xlabel('Data')
-    ax.set_title(f'{ticker} — {MODEL_NAME}: stopy zwrotu i pasma zmienności ±2σ')
-    ax.legend(loc='upper right', fontsize=9)
+for ax, ticker in zip(axes, TICKERS):
+    dates    = panels[ticker]['dates']
+    real_sig = np.sqrt(np.clip(panels[ticker]['realized'], 0, None))
+    pred_sig = np.sqrt(np.clip(panels[ticker]['forecasts'], 0, None))
+    ax.plot(dates, real_sig, color='#000000', linewidth=0.6, alpha=0.85, label=r'Realizacja $|r_t|$')
+    ax.plot(dates, pred_sig, color='#e74c3c', linewidth=1.1, label=fr'Prognoza $\hat{{\sigma}}_t$ ({MODEL_NAME})')
+    ax.set_ylim(0, y_max)
+    ax.set_ylabel(r'$\sigma_t$', fontsize=10)
+    ax.set_title(ticker, loc='left', fontsize=11, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=8)
     ax.grid(True, alpha=0.25)
-    plt.tight_layout()
-    plt.savefig(f"charts/04_egarch/forecast_vs_realized_{ticker}.png", dpi=150)
-    plt.close()
+axes[-1].set_xlabel('Data')
+fig.suptitle(f'{MODEL_NAME} — prognoza odchylenia standardowego vs realizacja $|r_t|$ (5 spółek)',
+             fontsize=12, fontweight='bold', y=0.995)
+plt.tight_layout(rect=[0, 0, 1, 0.985])
+plt.savefig("charts/04_egarch/forecast_vs_realized_all.png", dpi=150, bbox_inches='tight')
+plt.close()
 
-# Zapisz podsumowanie
 results_df = pd.DataFrame(all_results)
 results_df.to_csv("results/04_egarch/metrics_summary.csv", index=False)
+
 print(f"\n{'='*50}")
 print(f"PODSUMOWANIE {MODEL_NAME}")
 print('='*50)
 print(results_df.to_string(index=False))
 
 print(f"\nWyniki zapisane w results/04_egarch/")
-print(f"Wykresy zapisane w charts/04_egarch/")
+print(f"Wykres zbiorczy: charts/04_egarch/forecast_vs_realized_all.png")

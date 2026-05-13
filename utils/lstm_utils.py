@@ -2,34 +2,27 @@
 #
 # Zawiera:
 # - Architekturę modelu LSTM
-# - Przygotowanie sekwencji
 # - Trenowanie z early stopping
-# - Walk-forward validation
+# - Ewaluację z podziałem 80/10/10 i sliding window na zbiorze testowym
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
 
 
 class LSTMVolatility(nn.Module):
     """
-    LSTM do prognozowania zmienności (wariancji).
+    LSTM do prognozowania zmienności (wariancji warunkowej).
 
     Architektura:
-    - LSTM layer(s) przetwarzający sekwencję zwrotów
-    - Fully connected layer na wyjściu
-    - Softplus activation zapewniająca dodatnią wariancję
+    - Warstwa LSTM przetwarzająca sekwencję stóp zwrotu
+    - Dropout przed warstwą wyjściową
+    - Warstwa FC + Softplus (gwarantuje dodatnią wariancję)
     """
 
     def __init__(self, input_size=1, hidden_size=32, num_layers=1, dropout=0.1):
         super().__init__()
-
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-
-        # LSTM - batch_first=True oznacza input shape (batch, seq, features)
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -37,295 +30,196 @@ class LSTMVolatility(nn.Module):
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0,
         )
-
-        # Dropout przed warstwą wyjściową
-        self.dropout = nn.Dropout(dropout)
-
-        # Warstwa wyjściowa: hidden_size -> 1 (prognoza wariancji)
-        self.fc = nn.Linear(hidden_size, 1)
-
-        # Softplus zapewnia dodatnią wariancję (gładsze niż ReLU)
+        self.dropout  = nn.Dropout(dropout)
+        self.fc       = nn.Linear(hidden_size, 1)
         self.softplus = nn.Softplus()
 
     def forward(self, x):
-        # x shape: (batch, seq_len, input_size)
-
-        # LSTM output shape: (batch, seq_len, hidden_size)
         lstm_out, _ = self.lstm(x)
-
-        # Bierzemy tylko ostatni timestep
-        last_hidden = lstm_out[:, -1, :]  # (batch, hidden_size)
-
-        # Dropout + FC + Softplus
+        last_hidden  = lstm_out[:, -1, :]
         out = self.dropout(last_hidden)
-        out = self.fc(out)  # (batch, 1)
-        out = self.softplus(out)  # zapewnia > 0
-
-        return out.squeeze(-1)  # (batch,)
-
-
-def prepare_sequences(returns, window_size):
-    """
-    Przygotuj sekwencje dla LSTM.
-
-    Parameters:
-    -----------
-    returns : np.array
-        Szereg zwrotów (1D)
-    window_size : int
-        Długość sekwencji wejściowej (lookback)
-
-    Returns:
-    --------
-    X : np.array, shape (n_samples, window_size, 1)
-        Sekwencje wejściowe (zwroty)
-    y : np.array, shape (n_samples,)
-        Targety (r² - realized variance)
-    """
-    n = len(returns)
-    X, y = [], []
-
-    for i in range(window_size, n):
-        # Input: ostatnie window_size zwrotów
-        X.append(returns[i - window_size:i])
-        # Target: r² następnego dnia (realized variance proxy)
-        y.append(returns[i] ** 2)
-
-    X = np.array(X).reshape(-1, window_size, 1)  # (samples, seq, features)
-    y = np.array(y)
-
-    return X, y
+        out = self.fc(out)
+        return self.softplus(out).squeeze(-1)
 
 
 def train_lstm(model, X_train, y_train, X_val, y_val,
                epochs=100, batch_size=32, learning_rate=0.001,
-               patience=10, device='cpu', verbose=False):
+               patience=15, device='cpu', verbose=True):
     """
-    Trenuj LSTM z early stopping.
+    Trenuj LSTM z early stopping na zbiorze walidacyjnym.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     model : LSTMVolatility
-    X_train, y_train : np.array - dane treningowe
-    X_val, y_val : np.array - dane walidacyjne
-    epochs : int - max liczba epok
+    X_train, y_train : np.array — dane treningowe
+    X_val, y_val : np.array — dane walidacyjne (early stopping)
+    epochs : int
     batch_size : int
     learning_rate : float
-    patience : int - ile epok bez poprawy przed zatrzymaniem
-    device : str - 'cpu' lub 'cuda'
-    verbose : bool - czy printować postęp
+    patience : int — liczba epok bez poprawy przed zatrzymaniem
+    device : str
+    verbose : bool
 
-    Returns:
-    --------
+    Returns
+    -------
     model : wytrenowany model
-    train_losses : list
-    val_losses : list
+    train_losses, val_losses : list
     """
     model = model.to(device)
 
-    # Konwersja do tensorów
     X_train_t = torch.FloatTensor(X_train).to(device)
     y_train_t = torch.FloatTensor(y_train).to(device)
-    X_val_t = torch.FloatTensor(X_val).to(device)
-    y_val_t = torch.FloatTensor(y_val).to(device)
+    X_val_t   = torch.FloatTensor(X_val).to(device)
+    y_val_t   = torch.FloatTensor(y_val).to(device)
 
-    # DataLoader dla mini-batch training
-    train_dataset = TensorDataset(X_train_t, y_train_t)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(TensorDataset(X_train_t, y_train_t),
+                              batch_size=batch_size, shuffle=True)
 
-    # Optimizer i loss
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
 
-    # Early stopping
-    best_val_loss = float('inf')
-    best_model_state = None
+    best_val_loss     = float('inf')
+    best_model_state  = None
     epochs_no_improve = 0
-
-    train_losses = []
-    val_losses = []
+    train_losses, val_losses = [], []
 
     for epoch in range(epochs):
-        # Training
         model.train()
         epoch_train_loss = 0
         for X_batch, y_batch in train_loader:
             optimizer.zero_grad()
-            y_pred = model(X_batch)
-            loss = criterion(y_pred, y_batch)
+            loss = criterion(model(X_batch), y_batch)
             loss.backward()
             optimizer.step()
             epoch_train_loss += loss.item() * len(X_batch)
-
         epoch_train_loss /= len(X_train)
         train_losses.append(epoch_train_loss)
 
-        # Validation
         model.eval()
         with torch.no_grad():
-            y_val_pred = model(X_val_t)
-            val_loss = criterion(y_val_pred, y_val_t).item()
+            val_loss = criterion(model(X_val_t), y_val_t).item()
         val_losses.append(val_loss)
 
-        # Early stopping check
         if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_model_state = model.state_dict().copy()
+            best_val_loss    = val_loss
+            best_model_state = {k: v.clone() for k, v in model.state_dict().items()}
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
 
-        if verbose and (epoch + 1) % 20 == 0:
-            print(f"  Epoch {epoch+1}/{epochs} - Train: {epoch_train_loss:.6f}, Val: {val_loss:.6f}")
+        if verbose and (epoch + 1) % 10 == 0:
+            print(f"    Epoch {epoch+1:3d}/{epochs} — train: {epoch_train_loss:.6f}, val: {val_loss:.6f}")
 
         if epochs_no_improve >= patience:
             if verbose:
-                print(f"  Early stopping at epoch {epoch+1}")
+                print(f"    Early stopping at epoch {epoch + 1}")
             break
 
-    # Przywróć najlepszy model
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
     return model, train_losses, val_losses
 
 
-def walk_forward_lstm(returns_series, window_size, initial_train_size,
-                      refit_every=250, val_ratio=0.1,
+def static_split_lstm(returns_series, window_size, train_ratio=0.8, val_ratio=0.1,
                       hidden_size=32, num_layers=1, dropout=0.1,
                       epochs=100, batch_size=32, learning_rate=0.001,
-                      patience=10, device='cpu', seed=42):
+                      patience=15, device='cpu', seed=42):
     """
-    Walk-Forward Validation dla LSTM.
+    Ewaluacja LSTM z podziałem 80/10/10 i sliding window na zbiorze testowym.
 
-    Expanding window: okno treningowe rośnie z każdym krokiem.
-    Model jest re-trenowany co `refit_every` dni.
+    Procedura:
+    1. Normalizacja z użyciem statystyk zbioru treningowego (zapobiega data leakage).
+    2. Trenowanie na 80% train — zbiór walidacyjny (10%) wyłącznie dla early stopping.
+    3. Prognozy 1-step-ahead metodą sliding window na 10% test (model nie jest re-trenowany).
 
-    UWAGA: refit_every dla LSTM powinno być większe niż dla GARCH
-    (zalecane: 250+) ze względu na czas trenowania.
+    Dla każdego dnia t w zbiorze testowym:
+        wejście:  ostatnie window_size stóp zwrotu [r_{t-L}, ..., r_{t-1}]
+        wyjście:  prognoza σ²_t
 
-    Parameters:
-    -----------
-    returns_series : pd.Series lub np.array
-        Szereg logarytmicznych stóp zwrotu
-    window_size : int
-        Lookback window dla LSTM (np. 20)
-    initial_train_size : int
-        Początkowy rozmiar okna treningowego (np. 1000)
-    refit_every : int
-        Co ile dni re-trenować model (domyślnie 250)
-    val_ratio : float
-        Procent danych treningowych na walidację (0.1 = 10%)
-    hidden_size, num_layers, dropout : hiperparametry LSTM
+    Parameters
+    ----------
+    returns_series : pd.Series
+    window_size : int — długość sekwencji wejściowej (L)
+    train_ratio, val_ratio : float
+    hidden_size, num_layers, dropout : architektura LSTM
     epochs, batch_size, learning_rate, patience : parametry trenowania
     device : 'cpu' lub 'cuda'
-    seed : int - dla reproducibility
+    seed : int
 
-    Returns:
-    --------
-    dict z kluczami:
-        - forecasts: np.array prognoz σ²
-        - realized: np.array zrealizowanej zmienności (r²)
-        - dates: indeks dat
-        - fit_count: ile razy model był trenowany
+    Returns
+    -------
+    dict z kluczami: forecasts, realized, dates, train_size, val_size, test_size
     """
     from params import set_seed
+    set_seed(seed)
 
-    # Konwersja do numpy
     if hasattr(returns_series, 'values'):
-        returns = returns_series.values
-        dates = returns_series.index[initial_train_size:]
+        returns   = returns_series.values
+        all_dates = returns_series.index
     else:
-        returns = np.array(returns_series)
-        dates = None
+        returns   = np.array(returns_series)
+        all_dates = None
 
-    n = len(returns)
+    n          = len(returns)
+    train_size = int(n * train_ratio)
+    val_size   = int(n * val_ratio)
+    test_start = train_size + val_size
+
+    print(f"  Podział: train={train_size}, val={val_size}, test={n - test_start}")
+
+    # 1. Normalizacja — parametry wyłącznie ze zbioru treningowego
+    train_mean   = np.mean(returns[:train_size])
+    train_std    = np.std(returns[:train_size]) + 1e-8
+    returns_norm = (returns - train_mean) / train_std
+
+    # 2. Sekwencje treningowe — cel w zbiorze treningowym
+    X_train_list, y_train_list = [], []
+    for i in range(window_size, train_size):
+        X_train_list.append(returns_norm[i - window_size:i])
+        y_train_list.append(returns_norm[i] ** 2)
+    X_train = np.array(X_train_list).reshape(-1, window_size, 1)
+    y_train = np.array(y_train_list)
+
+    # Sekwencje walidacyjne — cel w zbiorze walidacyjnym
+    X_val_list, y_val_list = [], []
+    for i in range(train_size, test_start):
+        X_val_list.append(returns_norm[i - window_size:i])
+        y_val_list.append(returns_norm[i] ** 2)
+    X_val = np.array(X_val_list).reshape(-1, window_size, 1)
+    y_val = np.array(y_val_list)
+
+    # 3. Trenowanie z early stopping
+    model = LSTMVolatility(input_size=1, hidden_size=hidden_size,
+                           num_layers=num_layers, dropout=dropout)
+    model, _, _ = train_lstm(model, X_train, y_train, X_val, y_val,
+                             epochs=epochs, batch_size=batch_size,
+                             learning_rate=learning_rate, patience=patience,
+                             device=device, verbose=True)
+
+    # 4. Sliding window predictions na zbiorze testowym
+    model.eval()
     forecasts = []
-    realized = []
+    realized  = []
 
-    model = None
-    fit_count = 0
-
-    # Skalowanie danych (zapisujemy parametry z pierwszego fitu)
-    train_mean = None
-    train_std = None
-
-    # Progress bar
-    pbar = tqdm(range(initial_train_size, n), desc="Walk-forward LSTM")
-
-    for t in pbar:
-        # Re-fit model co refit_every dni lub na początku
-        if model is None or (t - initial_train_size) % refit_every == 0:
-            set_seed(seed)  # reproducibility przy każdym treningu
-
-            # Dane treningowe do momentu t
-            train_returns = returns[:t]
-
-            # Normalizacja (fit na train, transform na wszystko)
-            train_mean = np.mean(train_returns)
-            train_std = np.std(train_returns) + 1e-8
-            train_returns_norm = (train_returns - train_mean) / train_std
-
-            # Przygotuj sekwencje
-            X_all, y_all = prepare_sequences(train_returns_norm, window_size)
-
-            # Target scaling: y to r², skalujemy przez std²
-            # Ale ponieważ train_returns_norm ma std~1, y_all jest już w dobrej skali
-
-            # Podział na train/val (ostatnie val_ratio% na walidację)
-            n_train = len(X_all)
-            n_val = max(1, int(n_train * val_ratio))
-            n_train_actual = n_train - n_val
-
-            X_train, y_train = X_all[:n_train_actual], y_all[:n_train_actual]
-            X_val, y_val = X_all[n_train_actual:], y_all[n_train_actual:]
-
-            # Inicjalizuj i trenuj model
-            model = LSTMVolatility(
-                input_size=1,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=dropout,
-            )
-
-            model, _, _ = train_lstm(
-                model, X_train, y_train, X_val, y_val,
-                epochs=epochs, batch_size=batch_size,
-                learning_rate=learning_rate, patience=patience,
-                device=device, verbose=False
-            )
-
-            fit_count += 1
-            pbar.set_postfix({'fits': fit_count})
-
-        # Prognoza na okres t
-        model.eval()
-
-        # Sekwencja wejściowa: ostatnie window_size zwrotów przed t
-        input_seq = returns[t - window_size:t]
-        input_seq_norm = (input_seq - train_mean) / train_std
-
-        # Konwersja do tensora
-        X_pred = torch.FloatTensor(input_seq_norm.reshape(1, window_size, 1))
-        X_pred = X_pred.to(next(model.parameters()).device)
+    for i in range(test_start, n):
+        input_seq = returns_norm[i - window_size:i].reshape(1, window_size, 1)
+        X_pred    = torch.FloatTensor(input_seq).to(device)
 
         with torch.no_grad():
-            # Prognoza w skali znormalizowanej
-            sigma2_pred_norm = model(X_pred).item()
+            sigma2_norm = model(X_pred).item()
 
-        # Przeskaluj z powrotem: variance w oryginalnej skali
-        # Jeśli r_norm = r / std, to r² = r_norm² * std²
-        sigma2_pred = sigma2_pred_norm * (train_std ** 2)
+        # Przeskalowanie do oryginalnej skali: var_orig = var_norm * std²
+        forecasts.append(sigma2_norm * (train_std ** 2))
+        realized.append(returns[i] ** 2)
 
-        # Realized variance
-        sigma2_real = returns[t] ** 2
-
-        forecasts.append(sigma2_pred)
-        realized.append(sigma2_real)
+    dates = all_dates[test_start:] if all_dates is not None else None
 
     return {
-        'forecasts': np.array(forecasts),
-        'realized': np.array(realized),
-        'dates': dates,
-        'fit_count': fit_count,
+        'forecasts':  np.array(forecasts),
+        'realized':   np.array(realized),
+        'dates':      dates,
+        'train_size': train_size,
+        'val_size':   val_size,
+        'test_size':  n - test_start,
     }

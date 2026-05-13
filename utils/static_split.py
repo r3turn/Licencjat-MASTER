@@ -1,8 +1,7 @@
-# utils/walk_forward.py - Walk-Forward Validation dla modeli GARCH
+# utils/static_split.py - Ewaluacja modeli GARCH z podziałem 80/10/10
 
 import numpy as np
 from arch import arch_model
-from tqdm import tqdm
 from scipy.special import gamma as _gamma_fn
 
 
@@ -22,7 +21,6 @@ def _garch_step(vol_type, o_param, params, eps, last_sigma2):
         nu    = float(params.get('nu', 8.0))
         sigma = np.sqrt(max(last_sigma2, 1e-10))
         z = eps / sigma
-        # E[|z|] dla standaryzowanego rozkładu t(nu)
         E_abs_z = (2.0 * np.sqrt(nu - 2.0) * _gamma_fn((nu + 1.0) / 2.0) /
                    (_gamma_fn(nu / 2.0) * (nu - 1.0) * np.sqrt(np.pi)))
         log_h = (omega
@@ -31,7 +29,6 @@ def _garch_step(vol_type, o_param, params, eps, last_sigma2):
                  + gamma * z)
         return np.exp(np.clip(log_h, -30, 30))
     else:
-        # GARCH(1,1) lub GJR-GARCH(1,1,1)
         alpha = float(params['alpha[1]'])
         gamma = float(params.get('gamma[1]', 0.0)) if o_param > 0 else 0.0
         I_neg = 1.0 if eps < 0.0 else 0.0
@@ -39,158 +36,84 @@ def _garch_step(vol_type, o_param, params, eps, last_sigma2):
         return max(h, 1e-10)
 
 
-def walk_forward_garch(returns_series, model_config, initial_train_size, refit_every=50):
+def static_split_garch(returns_series, model_config, train_ratio=0.8, val_ratio=0.1):
     """
-    Walk-Forward Validation dla modeli rodziny GARCH.
+    Ewaluacja modeli GARCH z podziałem 80/10/10.
 
-    Expanding window: okno treningowe rośnie z każdym krokiem.
-    Parametry re-estymowane co `refit_every` dni; między re-fitami
-    wariancja warunkowa aktualizowana jest codziennie przez rekursję GARCH
-    z bieżącą obserwacją y[t-1] — prawidłowy one-step-ahead forecast.
+    Procedura:
+    1. Estymacja parametrów na zbiorze treningowym (80%).
+    2. Propagacja rekursji GARCH przez zbiór walidacyjny (10%) bez zbierania prognoz
+       — aktualizacja stanu warunkowej wariancji.
+    3. Prognozy 1-step-ahead metodą sliding window na zbiorze testowym (10%).
 
-    Parameters:
-    -----------
-    returns_series : pd.Series lub np.array
-        Szereg logarytmicznych stóp zwrotu (NIE przeskalowany)
+    Parametry modelu pozostają niezmienione od momentu estymacji na zbiorze treningowym
+    (analogia do sieci neuronowych: wagi ustalone po treningu).
+
+    Parameters
+    ----------
+    returns_series : pd.Series
+        Szereg logarytmicznych stóp zwrotu.
     model_config : dict
-        Konfiguracja arch_model, np. {'vol': 'GARCH', 'p': 1, 'q': 1}
-    initial_train_size : int
-        Początkowy rozmiar okna treningowego (np. 1000 dni)
-    refit_every : int
-        Co ile dni re-estymować parametry (domyślnie 50)
+        Konfiguracja arch_model, np. {'vol': 'GARCH', 'p': 1, 'q': 1}.
+    train_ratio : float
+        Udział zbioru treningowego (domyślnie 0.8).
+    val_ratio : float
+        Udział zbioru walidacyjnego (domyślnie 0.1).
 
-    Returns:
-    --------
-    dict z kluczami:
-        - forecasts: np.array prognoz σ² (wariancji)
-        - realized: np.array zrealizowanej zmienności (r²)
-        - dates: indeks dat (jeśli pd.Series)
-        - fit_count: ile razy model był fitowany
+    Returns
+    -------
+    dict z kluczami: forecasts, realized, dates, train_size, val_size, test_size
     """
-    # Konwersja do numpy i skalowanie (*100 dla stabilności GARCH)
     if hasattr(returns_series, 'values'):
-        y = returns_series.values * 100
-        dates = returns_series.index[initial_train_size:]
+        y_orig    = returns_series.values
+        all_dates = returns_series.index
     else:
-        y = np.array(returns_series) * 100
-        dates = None
+        y_orig    = np.array(returns_series)
+        all_dates = None
 
-    n = len(y)
-    forecasts = []
-    realized  = []
+    n = len(y_orig)
+    y = y_orig * 100  # skalowanie (*100) dla stabilności numerycznej GARCH
 
-    last_fit      = None
-    fit_count     = 0
-    last_params   = None
-    last_mu       = 0.0
-    last_sigma2   = None   # wariancja warunkowa w przestrzeni skalowanej
+    train_size = int(n * train_ratio)
+    val_size   = int(n * val_ratio)
+    test_start = train_size + val_size
+
+    print(f"  Podział: train={train_size}, val={val_size}, test={n - test_start}")
 
     vol_type = model_config.get('vol', 'GARCH').upper()
     o_param  = model_config.get('o', 0)
 
-    pbar = tqdm(range(initial_train_size, n), desc="Walk-forward")
+    # 1. Estymacja parametrów na zbiorze treningowym
+    model = arch_model(y[:train_size], mean='Constant', dist='t', **model_config)
+    fit   = model.fit(disp='off', show_warning=False)
 
-    for t in pbar:
-        # Re-estymacja parametrów co refit_every dni
-        if last_fit is None or (t - initial_train_size) % refit_every == 0:
-            try:
-                model = arch_model(
-                    y[:t],
-                    mean='Constant',
-                    dist='t',
-                    **model_config
-                )
-                last_fit    = model.fit(disp='off', show_warning=False)
-                fit_count  += 1
-                last_params = last_fit.params
-                last_mu     = float(last_params.get('mu', 0.0))
-                # Ostatnia wariancja warunkowa z dopasowanego modelu (σ²_{t-1})
-                last_sigma2 = float(np.asarray(last_fit.conditional_volatility)[-1]) ** 2
-            except Exception as e:
-                if last_fit is None:
-                    raise RuntimeError(f"Pierwszy fit się nie powiódł: {e}")
+    params      = fit.params
+    mu          = float(params.get('mu', 0.0))
+    last_sigma2 = float(np.asarray(fit.conditional_volatility)[-1]) ** 2
 
-        # Aktualizacja rekursją GARCH: σ²_t = f(ε_{t-1}, σ²_{t-1})
-        eps         = y[t - 1] - last_mu
-        last_sigma2 = _garch_step(vol_type, o_param, last_params, eps, last_sigma2)
+    # 2. Propagacja rekursji przez zbiór walidacyjny (aktualizacja stanu)
+    for t in range(train_size, test_start):
+        eps         = y[t - 1] - mu
+        last_sigma2 = _garch_step(vol_type, o_param, params, eps, last_sigma2)
 
-        # Prognoza w oryginalnej skali
-        sigma2_pred = last_sigma2 / 10000
-
-        # Realized volatility = r²
-        sigma2_real = (y[t] / 100) ** 2
-
-        forecasts.append(sigma2_pred)
-        realized.append(sigma2_real)
-
-    return {
-        'forecasts': np.array(forecasts),
-        'realized':  np.array(realized),
-        'dates':     dates,
-        'fit_count': fit_count,
-    }
-
-
-def walk_forward_garch_variance_targeting(returns_series, model_config, initial_train_size, refit_every=50):
-    """
-    Walk-Forward z variance targeting (alternatywna parametryzacja).
-
-    Variance targeting: ω jest obliczane z unconditional variance,
-    co może poprawić zbieżność w trudnych przypadkach.
-    """
-    if hasattr(returns_series, 'values'):
-        y = returns_series.values * 100
-        dates = returns_series.index[initial_train_size:]
-    else:
-        y = np.array(returns_series) * 100
-        dates = None
-
-    n = len(y)
+    # 3. Prognozy 1-step-ahead na zbiorze testowym (sliding window)
     forecasts = []
-    realized = []
+    realized  = []
 
-    last_fit = None
-    fit_count = 0
+    for t in range(test_start, n):
+        eps         = y[t - 1] - mu
+        last_sigma2 = _garch_step(vol_type, o_param, params, eps, last_sigma2)
 
-    pbar = tqdm(range(initial_train_size, n), desc="Walk-forward (VT)")
+        forecasts.append(last_sigma2 / 10000)       # oryginalna skala
+        realized.append((y[t] / 100) ** 2)          # r²
 
-    for t in pbar:
-        if last_fit is None or (t - initial_train_size) % refit_every == 0:
-            try:
-                # Variance targeting dla lepszej zbieżności
-                model = arch_model(
-                    y[:t],
-                    mean='Constant',
-                    dist='t',
-                    rescale=True,  # automatyczne skalowanie
-                    **model_config
-                )
-                last_fit = model.fit(
-                    disp='off',
-                    show_warning=False,
-                    options={'maxiter': 500}
-                )
-                fit_count += 1
-            except Exception as e:
-                if last_fit is None:
-                    raise RuntimeError(f"Pierwszy fit się nie powiódł: {e}")
-
-        try:
-            fcast = last_fit.forecast(horizon=1)
-            # Przy rescale=True, variance jest już w oryginalnej skali
-            variance_forecast = fcast.variance.values[-1, 0]
-            sigma2_pred = variance_forecast / 10000
-        except Exception:
-            sigma2_pred = (last_fit.conditional_volatility[-1] / 100) ** 2
-
-        sigma2_real = (y[t] / 100) ** 2
-
-        forecasts.append(sigma2_pred)
-        realized.append(sigma2_real)
+    dates = all_dates[test_start:] if all_dates is not None else None
 
     return {
-        'forecasts': np.array(forecasts),
-        'realized': np.array(realized),
-        'dates': dates,
-        'fit_count': fit_count,
+        'forecasts':  np.array(forecasts),
+        'realized':   np.array(realized),
+        'dates':      dates,
+        'train_size': train_size,
+        'val_size':   val_size,
+        'test_size':  n - test_start,
     }

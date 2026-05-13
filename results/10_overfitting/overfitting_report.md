@@ -4,29 +4,29 @@
 
 ## Metodologia
 
-- Trening przez 100 epok BEZ early stopping
-- Obserwacja rozbieżności train vs validation loss
-- Metryka: % wzrost val loss po osiągnięciu minimum
+- Podział danych 80/10/10 (train/val/test) — zgodny z resztą pipeline'u
+- Trening przez 100 epok BEZ early stopping na zbiorze treningowym (80%)
+- Walidacja na zbiorze val (10%) — obserwacja rozbieżności train vs val loss
+- Metryka overfittingu: % wzrost val loss po osiągnięciu minimum
 
 ## Wyniki
 
 | Ticker | LSTM best epoch | LSTM overfit % | GRU best epoch | GRU overfit % |
 |--------|-----------------|----------------|----------------|---------------|
-| AAPL | 68 | 3.3% | 63 | 2.1% |
-| NVDA | 61 | 5.4% | 31 | 12.1% |
-| JPM | 82 | 21.3% | 67 | 10.4% |
-| XOM | 55 | 1.3% | 60 | 3.2% |
-| SCCO | 48 | 3.2% | 94 | 1.1% |
-| **Średnia** | 62.8 | 6.9% | 63.0 | 5.8% |
+| AAPL | 29 | 6.4% | 3 | 38.7% |
+| NVDA | 16 | 26.8% | 4 | 65.4% |
+| JPM | 67 | 7.4% | 3 | 13.7% |
+| XOM | 3 | 22.5% | 1 | 51.0% |
+| SCCO | 18 | 1.4% | 16 | 13.3% |
+| **Średnia** | 26.6 | 12.9% | 5.4 | 36.4% |
 
 ## Wnioski
 
-- **LSTM** wykazuje większą tendencję do overfittingu (6.9%)
-- **GRU** jest bardziej odporny (5.8%)
-- Potwierdza to, że prostszy model (GRU) lepiej generalizuje
+- **GRU** wykazuje większą tendencję do overfittingu (36.4%)
+- **LSTM** jest bardziej odporny (12.9%)
 
 - Early stopping (patience=15) skutecznie zapobiega overfittingowi
-- Optymalny moment zatrzymania: ~epoch 63
+- Optymalny moment zatrzymania: ~epoch 16
 
 ## Hipoteza H3
 
